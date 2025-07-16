@@ -31,7 +31,7 @@ func TestStoreFile(t *testing.T) {
 		exist := s.Has(id, key)
 		assert.True(t, exist)
 
-		_, buf, err := s.Read(id, key)
+		_, buf, err, _ := s.Read(id, key)
 		assert.NoError(t, err)
 
 		b, err := io.ReadAll(buf)

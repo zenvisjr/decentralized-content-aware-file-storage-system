@@ -1,11 +1,11 @@
 package main
 
 import (
-	"bytes"
 	"encoding/gob"
 	"fmt"
 	"io"
 	"log"
+	"os"
 	"time"
 )
 
@@ -54,51 +54,60 @@ func main() {
 
 	// createFile()
 
-	// f, err := os.Open("file_3.pdf")
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
+	key := "test.zip"
+
+	f, err := os.Open(key)
+	if err != nil {
+		log.Fatal(err)
+	}
 	// ext := filepath.Ext(f.Name())
-	// // size, _ := f.Stat()
+	// size, _ := f.Stat()
 
-	// defer f.Close()
+	defer f.Close()
 
-	log.Println("Done opening file_3.pdf")
+	// log.Println("Done opening file")
 
 	// start := time.Now()
-	for i := 0; i < 1; i++ {
-		key := fmt.Sprintf("aizen_%d", i)
-		f := bytes.NewReader([]byte("hello watashino soul society"))
-		if err := s3.Store(key, f); err != nil {
-			fmt.Println("Error storing data", err)
-		}
+	// for i := 0; i < 1; i++ {
+	// key := fmt.Sprintf("bill.pdf", i)
 
-		// time.Sleep(500 * time.Millisecond)
-		// if err := s3.Delete(key); err != nil {
-		// 	fmt.Println("Error deleting data", err)
-		// }
+	// f := bytes.NewReader([]byte("hello watashino soul society"))
+	if err := s3.Store(key, f); err != nil {
+		fmt.Println("Error storing data", err)
+	}
 
-		time.Sleep(500 * time.Millisecond)
-		if err := s3.DeleteLocal(key); err != nil {
-			fmt.Println("Error deleting data", err)
-		}
+	time.Sleep(500 * time.Millisecond)
+	if err := s3.Delete(key); err != nil {
+		fmt.Println("Error deleting data", err)
+	}
 
-		// time.Sleep(500 * time.Millisecond)
+	// time.Sleep(500 * time.Millisecond)
+	// if err := s3.DeleteLocal(key); err != nil {
+	// 	fmt.Println("Error deleting data", err)
+	// }
 
-		rd, err := s3.Get(key)
-		if err != nil {
-			log.Fatal("Error getting data\n", err)
-		}
+	time.Sleep(500 * time.Millisecond)
 
+	rd, fileLocation, err := s3.Get(key)
+	if err != nil {
+		log.Fatal("Error getting data\n", err)
+	}
+	ext := getExtension(key)
+	if len(ext) == 0 {
 		n, err := io.ReadAll(rd)
 
 		if err != nil {
 			log.Fatal("Error reading data ", err)
 		}
 		fmt.Println(string(n))
+
 	}
-	// fmt.Println("Time taken to store file", time.Since(start))
+	fmt.Println("Retrived file location", fileLocation)
+
 }
+
+// fmt.Println("Time taken to store file", time.Since(start))
+// }
 
 func init() {
 	gob.Register(MessageStoreFile{}) // Register the pointer form too

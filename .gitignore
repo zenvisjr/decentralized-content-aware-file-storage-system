@@ -1,0 +1,20 @@
+# Ignore all log files
+*.log
+
+# Ignore all .exe and binary files
+*.exe
+*.out
+
+*.key
+*.zip
+*.pdf
+*.jpg
+*.png
+*.jpeg
+*.mp4
+*.mp3
+*.wav
+*.webm
+*.webp
+*.gif
+*.svg

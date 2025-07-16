@@ -144,10 +144,11 @@ func (t *TCPTransport) HandleConn(conn net.Conn, outbound bool) {
 	}
 
 	for {
+		// fmt.Println("Waiting for message from peer", peer.RemoteAddr().String())
 		rpc := RPC{}
 		err = t.Decoder.Decode(conn, &rpc)
 		if err != nil {
-			// fmt.Println("Error decoding", err)
+			fmt.Println("Error decoding", err)
 			return
 		}
 		rpc.From = conn.RemoteAddr().String()

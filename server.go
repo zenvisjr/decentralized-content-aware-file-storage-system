@@ -94,10 +94,10 @@ func (f *FileServer) Store(key string, r io.Reader) error {
 
 	msg := Message{
 		Payload: MessageStoreFile{
-			Key:  hashKey(key),
+			Key:  hashKey(key) + getExtension(key),
 			Size: size + 16,
 			ID:   f.ID,
-			// Ext:  ext,
+			// Ext:  getExtension(key),
 		},
 	}
 
@@ -127,26 +127,27 @@ func (f *FileServer) Store(key string, r io.Reader) error {
 }
 
 
-func (f *FileServer) Get(key string) (io.Reader, error) {
+func (f *FileServer) Get(key string) (io.Reader, string, error) {
 	if f.store.Has(f.ID, key) {
 		fmt.Printf("[%s] have file [%s], serving from local disk\n", f.Transort.ListenAddr(), key)
-		_, r, err := f.store.Read(f.ID, key)
+		_, r, err, fileLocation := f.store.Read(f.ID, key)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
-		return r, nil
+		fmt.Printf("[%s] File location %s\n", f.Transort.ListenAddr(), fileLocation)
+		return r, fileLocation, nil
 	}
 	fmt.Printf("[%s] dont have file [%s], fetching from network...\n", f.Transort.ListenAddr(), key)
 
 	msg := Message{
 		Payload: MessageGetFile{
-			Key: hashKey(key),
+			Key: hashKey(key) + getExtension(key),
 			ID:  f.ID,
 		},
 	}
 	err := f.broadcast(&msg)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	time.Sleep(500 * time.Millisecond)
@@ -162,7 +163,7 @@ func (f *FileServer) Get(key string) (io.Reader, error) {
 		// fmt.Printf("recieved file size %d bytes from peer %s\n", fileSize, peer.RemoteAddr().String())
 		n, err := f.store.WriteDecrypted(f.ID, key, f.EncKey, io.LimitReader(peer, fileSize))
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		fmt.Printf("[%s] recieved (%d) bytes from peer %s\n", f.Transort.ListenAddr(), n, peer.RemoteAddr().String())
 
@@ -170,11 +171,12 @@ func (f *FileServer) Get(key string) (io.Reader, error) {
 	}
 
 	// select {}
-	_, r, err := f.store.Read(f.ID, key)
+	_, r, err, fileLocation := f.store.Read(f.ID, key)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	return r, nil
+	fmt.Printf("[%s] File location %s\n", f.Transort.ListenAddr(), fileLocation)
+	return r, fileLocation, nil
 }
 
 //Delete delets the file locally if its present according to key 
@@ -297,14 +299,14 @@ func (f *FileServer) HandleMessage(from string, msg *Message) error {
 }
 
 func (f *FileServer) handleMessageGetFile(from string, msg *MessageGetFile) error {
-
+	fmt.Println("executing handleMessageGetFile")
 	if !f.store.Has(msg.ID, msg.Key) {
 		return fmt.Errorf("[%s] need to serve file (%s) to peer %s but it does not exist on the network", f.Transort.ListenAddr(), msg.Key, from)
 	}
 
 	fmt.Printf("[%s] fetching file (%s) from network and sending it via wire to peer %s\n", f.Transort.ListenAddr(), msg.Key, from)
 
-	fileSize, rd, err := f.store.Read(msg.ID, msg.Key)
+	fileSize, rd, err, _ := f.store.Read(msg.ID, msg.Key)
 	if err != nil {
 		return err
 	}
@@ -386,6 +388,7 @@ func (f *FileServer) broadcast(msg *Message) error {
 	}
 
 	for _, p := range f.peers {
+		fmt.Println("Broadcasting message to peer", p.RemoteAddr().String())
 		p.Send([]byte{p2p.IncommingMessage})
 		if err := p.Send(buf.Bytes()); err != nil {
 			return err

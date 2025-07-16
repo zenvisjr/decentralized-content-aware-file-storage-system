@@ -61,6 +61,7 @@ func makeServer(configFile *ServerConfig) *FileServer {
 		Transort:          tcpTransport,
 		BootstrapNodes:    configFile.BootstrapNodes,
 		EncKey:            newEncryptionKey(),
+		// EncKey:            []byte("yokoso"),
 	}
 	// fmt.Println(fileServerOps)
 
