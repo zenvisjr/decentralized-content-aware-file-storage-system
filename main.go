@@ -2,14 +2,24 @@ package main
 
 import (
 	"encoding/gob"
+	"flag"
 	"fmt"
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"time"
 )
 
+
 func main() {
+	fileLocation := flag.String("file", "", "file name and location that you want to store on server")
+	flag.Parse()
+
+	if len(os.Args) < 2 {
+		fmt.Println("Please provide a file name and location")
+		return
+	}
 
 	fmt.Println("LETS START COOKING")
 	servers := completeServerSetup()
@@ -54,9 +64,9 @@ func main() {
 
 	// createFile()
 
-	key := "test.zip"
+	
 
-	f, err := os.Open(key)
+	f, err := os.Open(*fileLocation)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -70,7 +80,8 @@ func main() {
 	// start := time.Now()
 	// for i := 0; i < 1; i++ {
 	// key := fmt.Sprintf("bill.pdf", i)
-
+	key := filepath.Base(*fileLocation)
+	fmt.Println("Key", key)
 	// f := bytes.NewReader([]byte("hello watashino soul society"))
 	if err := s3.Store(key, f); err != nil {
 		fmt.Println("Error storing data", err)
@@ -88,7 +99,7 @@ func main() {
 
 	time.Sleep(500 * time.Millisecond)
 
-	rd, fileLocation, err := s3.Get(key)
+	rd, flLocation, err := s3.Get(key)
 	if err != nil {
 		log.Fatal("Error getting data\n", err)
 	}
@@ -102,7 +113,7 @@ func main() {
 		fmt.Println(string(n))
 
 	}
-	fmt.Println("Retrived file location", fileLocation)
+	fmt.Println("Retrived file location", flLocation)
 
 }
 
