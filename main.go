@@ -2,31 +2,37 @@ package main
 
 import (
 	"encoding/gob"
-	"flag"
 	"fmt"
-	"io"
 	"log"
 	"os"
-	"path/filepath"
 	"time"
 )
 
-
 func main() {
-	fileLocation := flag.String("file", "", "file name and location that you want to store on server")
-	flag.Parse()
+	// fileLocation := flag.String("file", "", "file name and location that you want to store on server")
+	// flag.Parse()
 
-	if len(os.Args) < 2 {
-		fmt.Println("Please provide a file name and location")
-		return
-	}
+	// if len(os.Args) < 2 {
+	// 	fmt.Println("Please provide a file name and location")
+	// 	return
+	// }
 
 	fmt.Println("LETS START COOKING")
+
 	servers := completeServerSetup()
 	s3 := servers[":5000"]
-	s2 := servers[":4000"]
-	s1 := servers[":3000"]
-	s4 := servers[":8000"]
+	// s2 := servers[":4000"]
+	// s1 := servers[":3000"]
+	// s4 := servers[":8000"]
+
+	time.Sleep(1 * time.Second)
+
+	// s3.store.ClearRoot()
+	// s2.store.ClearRoot()
+	// s1.store.ClearRoot()
+	// s4.store.ClearRoot()
+
+	runCommandLoop(s3)
 
 	// s1 := makeServer(":3000", "", ":8000")
 	// s2 := makeServer(":4000", ":3000")
@@ -55,39 +61,30 @@ func main() {
 
 	// time.Sleep(50 * time.Millisecond)
 
-	time.Sleep(1 * time.Second)
-
-	s3.store.ClearRoot()
-	s2.store.ClearRoot()
-	s1.store.ClearRoot()
-	s4.store.ClearRoot()
-
 	// createFile()
-
-	
-
-	f, err := os.Open(*fileLocation)
+	key := "bill.pdf"
+	f, err := os.Open(key)
 	if err != nil {
 		log.Fatal(err)
 	}
-	// ext := filepath.Ext(f.Name())
-	// size, _ := f.Stat()
+	// // // ext := filepath.Ext(f.Name())
+	// // // size, _ := f.Stat()
 
-	defer f.Close()
+	// // defer f.Close()
 
-	// log.Println("Done opening file")
+	// // log.Println("Done opening file")
 
-	// start := time.Now()
-	// for i := 0; i < 1; i++ {
-	// key := fmt.Sprintf("bill.pdf", i)
-	key := filepath.Base(*fileLocation)
-	fmt.Println("Key", key)
-	// f := bytes.NewReader([]byte("hello watashino soul society"))
+	// // start := time.Now()
+	// // for i := 0; i < 1; i++ {
+	// // key := fmt.Sprintf("bill.pdf", i)
+	// // key := filepath.Base(*fileLocation)
+	// // fmt.Println("Key", key)
+	// // // f := bytes.NewReader([]byte("hello watashino soul society"))
 	if err := s3.Store(key, f); err != nil {
 		fmt.Println("Error storing data", err)
 	}
 
-	time.Sleep(500 * time.Millisecond)
+	// time.Sleep(500 * time.Millisecond)
 	if err := s3.Delete(key); err != nil {
 		fmt.Println("Error deleting data", err)
 	}
@@ -97,23 +94,23 @@ func main() {
 	// 	fmt.Println("Error deleting data", err)
 	// }
 
-	time.Sleep(500 * time.Millisecond)
+	// time.Sleep(500 * time.Millisecond)
 
-	rd, flLocation, err := s3.Get(key)
-	if err != nil {
-		log.Fatal("Error getting data\n", err)
-	}
-	ext := getExtension(key)
-	if len(ext) == 0 {
-		n, err := io.ReadAll(rd)
+	// rd, flLocation, err := s3.Get(key)
+	// if err != nil {
+	// 	log.Fatal("Error getting data\n", err)
+	// }
+	// ext := getExtension(key)
+	// if len(ext) == 0 {
+	// 	n, err := io.ReadAll(rd)
 
-		if err != nil {
-			log.Fatal("Error reading data ", err)
-		}
-		fmt.Println(string(n))
+	// 	if err != nil {
+	// 		log.Fatal("Error reading data ", err)
+	// 	}
+	// 	fmt.Println(string(n))
 
-	}
-	fmt.Println("Retrived file location", flLocation)
+	// }
+	// fmt.Println("Retrived file location", flLocation)
 
 }
 

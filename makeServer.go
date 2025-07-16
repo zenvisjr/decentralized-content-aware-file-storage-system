@@ -1,10 +1,14 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"flag"
+	"fmt"
+	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -125,4 +129,95 @@ func completeServerSetup() map[string]*FileServer {
 	}
 
 	return servers
+}
+
+func runCommandLoop(fs *FileServer) {
+	scanner := bufio.NewScanner(os.Stdin)
+
+	for {
+		fmt.Print(">>> ")
+		if !scanner.Scan() {
+			break
+		}
+		line := scanner.Text()
+		args := strings.Fields(line)
+		if len(args) == 0 {
+			continue
+		}
+
+		cmd := strings.ToLower(args[0])
+
+		switch cmd {
+		case "store":
+			fmt.Println(args)
+			if len(args) != 2 {
+				fmt.Println("Usage: store <file-path>")
+				continue
+			}
+			f, err := os.Open(args[1])
+			if err != nil {
+				log.Fatal(err)
+			}
+			defer f.Close()
+
+			key := filepath.Base(args[1])
+			if err := fs.Store(key, f); err != nil {
+				fmt.Println("Error storing data", err)
+			}
+
+		case "get":
+			if len(args) != 2 {
+				fmt.Println("Usage: get <filename>")
+				continue
+			}
+			key := args[1]
+			rd, fileLoc, err := fs.Get(key)
+			if err != nil {
+				fmt.Println("Error getting file:", err)
+			} else {
+				fmt.Println("File stored at:", fileLoc)
+			}
+
+			ext := getExtension(key)
+			if len(ext) == 0 {
+				n, err := io.ReadAll(rd)
+
+				if err != nil {
+					log.Fatal("Error reading data ", err)
+				}
+				fmt.Println(string(n))
+
+			}
+
+		case "delete":
+			if len(args) != 2 {
+				fmt.Println("Usage: delete <filename>")
+				continue
+			}
+			key := args[1]
+			err := fs.Delete(key)
+			if err != nil {
+				fmt.Println("Error deleting file:", err)
+			}
+
+		case "deletelocal":
+			if len(args) != 2 {
+				fmt.Println("Usage: deletelocal <filename>")
+				continue
+			}
+			key := args[1]
+			err := fs.DeleteLocal(key)
+			if err != nil {
+				fmt.Println("Error deleting local file:", err)
+			}
+
+		case "quit":
+			fmt.Println("Exiting...")
+			return
+
+		default:
+			fmt.Println("Unknown command. Supported: store, get, delete, deletelocal, quit")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }

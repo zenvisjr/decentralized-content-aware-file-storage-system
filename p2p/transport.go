@@ -15,6 +15,7 @@ type Peer interface {
 // between the nodes in the network. This can be of the
 // form (TCP, UDP, websockets, ...)
 type Transport interface {
+	// net.Conn
 	ListenAddr() string
 	ListenAndAccept() error
 	Consume() <-chan RPC

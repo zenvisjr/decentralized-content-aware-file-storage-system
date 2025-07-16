@@ -60,8 +60,8 @@ type Message struct {
 }
 
 type MessageStoreFile struct {
-	Key  string
-	ID   string
+	Key string
+	ID  string
 	// Ext  string
 	Size int64
 }
@@ -85,7 +85,7 @@ func (f *FileServer) Store(key string, r io.Reader) error {
 		fileBuffer = new(bytes.Buffer)
 		tee        = io.TeeReader(r, fileBuffer)
 	)
-	
+
 	fmt.Println("Storing file to disk")
 	size, err := f.store.Write(f.ID, key, tee)
 	if err != nil {
@@ -125,7 +125,6 @@ func (f *FileServer) Store(key string, r io.Reader) error {
 
 	return nil
 }
-
 
 func (f *FileServer) Get(key string) (io.Reader, string, error) {
 	if f.store.Has(f.ID, key) {
@@ -179,22 +178,21 @@ func (f *FileServer) Get(key string) (io.Reader, string, error) {
 	return r, fileLocation, nil
 }
 
-//Delete delets the file locally if its present according to key 
+// Delete delets the file locally if its present according to key
 // and also from all the peers in the network
 func (f *FileServer) Delete(key string) error {
 	if f.store.Has(f.ID, key) {
-		fmt.Printf("[%s] have file [%s], deleting from local disk\n", f.Transort.ListenAddr(), key)
-		err := f.store.Delete(f.ID, key)
-		if err != nil {
-			return err
-		}
+	fmt.Printf("[%s] have file [%s], deleting from local disk\n", f.Transort.ListenAddr(), key)
+	if err := f.store.Delete(f.ID, key); err != nil {
+		return err
+	}
 	}
 
 	fmt.Printf("[%s] will now delete files from all its peers\n", f.Transort.ListenAddr())
 
 	msg := Message{
 		Payload: MessageDeleteFile{
-			Key: hashKey(key),
+			Key: hashKey(key) + getExtension(key),
 			ID:  f.ID,
 		},
 	}
@@ -209,8 +207,8 @@ func (f *FileServer) Delete(key string) error {
 	return nil
 }
 
-//DeleteLocal deletes the file locally if its present according to key 
-func(f *FileServer) DeleteLocal(key string) error {
+// DeleteLocal deletes the file locally if its present according to key
+func (f *FileServer) DeleteLocal(key string) error {
 	if f.store.Has(f.ID, key) {
 		fmt.Printf("[%s] have file [%s], deleting from local disk\n", f.Transort.ListenAddr(), key)
 		err := f.store.Delete(f.ID, key)
@@ -220,8 +218,6 @@ func(f *FileServer) DeleteLocal(key string) error {
 	}
 	return nil
 }
-
-
 
 // Start starts the file server.
 func (f *FileServer) Start() error {
@@ -265,6 +261,8 @@ func (f *FileServer) loop() {
 		log.Println("File server stopped due to error or user QUIT action")
 		f.Transort.Close()
 	}()
+
+
 	for {
 		select {
 		case rpc := <-f.Transort.Consume():
@@ -276,6 +274,7 @@ func (f *FileServer) loop() {
 			}
 			if err := f.HandleMessage(rpc.From, &msg); err != nil {
 				log.Println("handling type of message error", err)
+				continue
 			}
 
 		case <-f.quitch:
@@ -354,15 +353,13 @@ func (f *FileServer) handleMessageStoreFile(from string, msg *MessageStoreFile) 
 }
 
 func (f *FileServer) handleMessageDeleteFile(from string, msg *MessageDeleteFile) error {
-	fmt.Printf("Received delete message %+v from %s\n", msg, from)
+	// fmt.Printf("Received delete message %+v from %s\n", msg, from)
 	if f.store.Has(msg.ID, msg.Key) {
-		fmt.Printf("deleteing [%s] file from peer [%s] \n", msg.Key, from)
-		return f.store.Delete(msg.ID, msg.Key)
+	fmt.Printf("deleteing [%s] file from peer [%s] \n", msg.Key, from)
+	return f.store.Delete(msg.ID, msg.Key)
 	}
 	return nil
 }
-
-
 
 //utility functions
 
