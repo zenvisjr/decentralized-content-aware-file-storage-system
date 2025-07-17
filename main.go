@@ -21,16 +21,16 @@ func main() {
 
 	servers := completeServerSetup()
 	s3 := servers[":5000"]
-	// s2 := servers[":4000"]
-	// s1 := servers[":3000"]
-	// s4 := servers[":8000"]
+	s2 := servers[":4000"]
+	s1 := servers[":3000"]
+	s4 := servers[":8000"]
 
 	time.Sleep(1 * time.Second)
 
-	// s3.store.ClearRoot()
-	// s2.store.ClearRoot()
-	// s1.store.ClearRoot()
-	// s4.store.ClearRoot()
+	s3.store.ClearRoot()
+	s2.store.ClearRoot()
+	s1.store.ClearRoot()
+	s4.store.ClearRoot()
 
 	runCommandLoop(s3)
 
@@ -85,14 +85,14 @@ func main() {
 	}
 
 	// time.Sleep(500 * time.Millisecond)
-	if err := s3.Delete(key); err != nil {
-		fmt.Println("Error deleting data", err)
-	}
-
-	// time.Sleep(500 * time.Millisecond)
-	// if err := s3.DeleteLocal(key); err != nil {
+	// if err := s3.Delete(key); err != nil {
 	// 	fmt.Println("Error deleting data", err)
 	// }
+
+	time.Sleep(500 * time.Millisecond)
+	if err := s3.DeleteLocal(key); err != nil {
+		fmt.Println("Error deleting data", err)
+	}
 
 	// time.Sleep(500 * time.Millisecond)
 
@@ -121,4 +121,5 @@ func init() {
 	gob.Register(MessageStoreFile{}) // Register the pointer form too
 	gob.Register(MessageGetFile{})
 	gob.Register(MessageDeleteFile{})
+	gob.Register(MessageGetFileNotFound{})
 }
