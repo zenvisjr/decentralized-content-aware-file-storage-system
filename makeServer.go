@@ -39,7 +39,7 @@ func loadConfig(path string) ([]ServerConfig, error) {
 func makeServer(configFile *ServerConfig) *FileServer {
 	tcpops := p2p.TCPTransportOps{
 		ListenerPortAddr: configFile.Port,
-		ShakeHands:       p2p.NOHandshakeFunc,
+		ShakeHands:       p2p.DefensiveHandshakeFunc,
 		Decoder:          &p2p.DefaultDecoder{},
 		OnPeer:           nil,
 	}

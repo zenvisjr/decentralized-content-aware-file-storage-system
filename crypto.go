@@ -5,6 +5,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha1"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -118,3 +119,14 @@ func copyDecrypt(dist io.Writer, src io.Reader, key []byte) (int, error) {
 }
 
 //Encrypted Size = Original Size + IV (Initilization Vector) Size
+
+func hashFileContent(r io.Reader) (string, int64, error) {
+	hasher := sha256.New()
+	n, err := io.Copy(hasher, r)
+	if err != nil {
+		return "", 0, err
+	}
+	hashedFile := hasher.Sum(nil)
+	fmt.Println("hashed file", hashedFile)
+	return hex.EncodeToString(hashedFile), n, nil
+}

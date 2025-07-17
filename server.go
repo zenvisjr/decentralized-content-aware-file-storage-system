@@ -93,12 +93,23 @@ func (f *FileServer) Store(key string, r io.Reader) error {
 		fileBuffer = new(bytes.Buffer)
 		tee        = io.TeeReader(r, fileBuffer)
 	)
+	// fileHash, size, err := hashFileContent(fileBuffer)
+	// if err != nil {
+	// 	return err
+	// }
 
-	fmt.Println("Storing file to disk")
-	size, err := f.store.Write(f.ID, key, tee)
-	if err != nil {
-		return err
-	}
+	// if keyExist, ok := f.store.HashMap[fileHash]; !ok {
+		// f.store.HashMap[fileHash] = key
+
+		// fmt.Println("Storing file to disk")
+		size, err := f.store.Write(f.ID, key, tee)
+		if err != nil {
+			return err
+		}
+
+	// } else {
+	// 	fmt.Println("File already exists with key", keyExist)
+	// }
 
 	msg := Message{
 		Payload: MessageStoreFile{
@@ -134,6 +145,11 @@ func (f *FileServer) Store(key string, r io.Reader) error {
 	return nil
 }
 
+// Get fetches the file from disk if present locally else fetches from the network from its peers
+// we continue reading from each peer until we successfully fetch a file
+// once fetched from any peer we store it to disk and return it
+// if we are unable to fetch the file from any peer we return error
+// if file is not present with any peer we return error
 func (f *FileServer) Get(key string) (io.Reader, string, error) {
 	if f.store.Has(f.ID, key) {
 		fmt.Printf("[%s] have file [%s], serving from local disk\n", f.Transort.ListenAddr(), key)
@@ -165,9 +181,9 @@ func (f *FileServer) Get(key string) (io.Reader, string, error) {
 	time.Sleep(500 * time.Millisecond)
 	noOfPeers := len(f.peers)
 	notFound := 0 //tracks peers that explicitly said “I don’t have it.”
-	received := 0  //counts any kind of peer response — stream or not-found
+	received := 0 //counts any kind of peer response — stream or not-found
 
-	//why recieved? so that we can count all responses and if responses == no of peers 
+	//why recieved? so that we can count all responses and if responses == no of peers
 	//it means we were unable to fetch the file from any peer
 
 	for {
@@ -177,7 +193,7 @@ func (f *FileServer) Get(key string) (io.Reader, string, error) {
 		case <-f.notFoundChan:
 			fmt.Println("Peer responded: not found")
 			notFound++
-			received++  // we will count response even if stream fails later
+			received++ // we will count response even if stream fails later
 			if notFound == noOfPeers {
 				return nil, "", fmt.Errorf("[%s] and all its peers don't have file [%s]", f.Transort.ListenAddr(), key)
 			}
@@ -212,7 +228,6 @@ func (f *FileServer) Get(key string) (io.Reader, string, error) {
 			// fmt.Printf("[%s] File location %s\n", f.Transort.ListenAddr(), fileLocation)
 			return r, fileLocation, nil
 
-
 		case <-time.After(2 * time.Second):
 			// Timeout waiting for this peer — skip
 			if received == noOfPeers {
@@ -220,7 +235,6 @@ func (f *FileServer) Get(key string) (io.Reader, string, error) {
 			}
 			continue
 		}
-
 
 	}
 	// return nil, "", nil
@@ -273,7 +287,7 @@ func (f *FileServer) Start() error {
 	if err := f.Transort.ListenAndAccept(); err != nil {
 		return err
 	}
-	fmt.Println("File server started")
+	// fmt.Println("File server started")
 
 	if len(f.BootstrapNodes) > 0 {
 		fmt.Println("Bootstraping network......")
@@ -305,7 +319,7 @@ func (f *FileServer) BootstrapNetwork() error {
 }
 
 func (f *FileServer) loop() {
-	fmt.Println("File server loop started")
+	// fmt.Println("File server loop started")
 	defer func() {
 		log.Println("File server stopped due to error or user QUIT action")
 		f.Transort.Close()
@@ -424,17 +438,37 @@ func (f *FileServer) handleMessageGetFile(from string, msg *MessageGetFile) erro
 
 func (f *FileServer) handleMessageStoreFile(from string, msg *MessageStoreFile) error {
 	// panic("not implemented")
-	fmt.Printf("Received data message %+v from %s\n", msg, from)
+	// fmt.Printf("Received data message %+v from %s\n", msg, from)
 	peer, ok := f.peers[from]
 	if !ok {
 		return fmt.Errorf("peer %s could not be found", from)
 	}
 
-	n, err := f.store.Write(msg.ID, msg.Key, io.LimitReader(peer, msg.Size))
+	lr := io.LimitReader(peer, msg.Size)
+	// var decryptedBuf bytes.Buffer
+
+	// if _, err := copyDecrypt(&decryptedBuf, lr, f.EncKey); err != nil {
+	// 	return err
+	// }
+	// fmt.Println("decrypted")
+	// hash, _, err := hashFileContent(&decryptedBuf)
+	// if err != nil {
+	// 	return err
+	// }
+	// fmt.Println("hashed")
+	// if ok := f.Transort.CheckFileHashMap(hash); ok {
+	// 	return fmt.Errorf("[%s] file %s already exists on the peer [%s]", f.Transort.ListenAddr(), hash, from)
+	// }
+	// fmt.Println("checked")
+	// f.Transort.AddFileHashMap(hash, msg.Key)
+	// fmt.Println("added")
+	// n, err := f.store.Write(msg.ID, msg.Key, bytes.NewReader(decryptedBuf.Bytes()))
+	n, err := f.store.Write(msg.ID, msg.Key, lr)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Written (%d) bytes to disk\n", n)
+	fmt.Println("written")
+	fmt.Printf("[%s] Written (%d) bytes to disk\n", f.Transort.ListenAddr(), n)
 	peer.CloseStream()
 	return nil
 }

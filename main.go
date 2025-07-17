@@ -33,7 +33,7 @@ func main() {
 	s1.store.ClearRoot()
 	s4.store.ClearRoot()
 
-	runCommandLoop(s3)
+	// runCommandLoop(s3)
 
 	// s1 := makeServer(":3000", "", ":8000")
 	// s2 := makeServer(":4000", ":3000")
@@ -95,7 +95,7 @@ func main() {
 		fmt.Println("Error deleting data", err)
 	}
 
-	// time.Sleep(500 * time.Millisecond)
+	// // time.Sleep(500 * time.Millisecond)
 
 	rd, flLocation, err := s3.Get(key)
 	if err != nil {

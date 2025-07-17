@@ -55,6 +55,8 @@ type StoreOps struct {
 	//Root is the root folder containing all the folders/files of the system
 	Root              string
 	PathTransformFunc PathTransformFunc
+	//map to store hash of file -> key
+	HashMap map[string]string
 }
 
 // Store represents a store.
@@ -70,6 +72,10 @@ func NewStore(ops StoreOps) *Store {
 	if len(ops.Root) == 0 {
 		ops.Root = defaultRoot
 	}
+	if ops.HashMap == nil {
+		ops.HashMap = make(map[string]string)
+	}
+	
 	return &Store{
 		StoreOps: ops,
 	}

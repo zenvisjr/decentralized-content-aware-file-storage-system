@@ -7,7 +7,6 @@ import (
 	"sync"
 )
 
-
 // TCPPeer represents the remote node over a TCP established connection.
 type TCPPeer struct {
 	// The underlying TCP connection of the peer.
@@ -32,11 +31,10 @@ func (t *TCPPeer) Send(b []byte) error {
 	return err
 }
 
-func(t *TCPPeer) CloseStream() {
+func (t *TCPPeer) CloseStream() {
 	t.wg.Done()
 
 }
-
 
 // TCPTransportOps represents the options for a TCPTransport.
 type TCPTransportOps struct {
@@ -49,22 +47,34 @@ type TCPTransportOps struct {
 // TCPTransport represents a TCP transport connection.
 type TCPTransport struct {
 	TCPTransportOps
-	listener net.Listener
-	rpcch    chan RPC
+	listener           net.Listener
+	rpcch              chan RPC
 	incomingStreamChan chan Peer
+	FileHashMap        map[string]string
 }
 
 // NewTCPTransport creates a new TCPTransport instance.
 func NewTCPTransport(ops TCPTransportOps) (t *TCPTransport, err error) {
 	return &TCPTransport{
-		TCPTransportOps: ops,
-		rpcch:           make(chan RPC, 1024),
+		TCPTransportOps:    ops,
+		rpcch:              make(chan RPC, 1024),
 		incomingStreamChan: make(chan Peer, 1024),
+		FileHashMap:        make(map[string]string),
 	}, nil
 }
 
+func (t *TCPTransport) CheckFileHashMap(hash string) bool {
+	_, ok := t.FileHashMap[hash]
+	return ok
+}
+
+func (t *TCPTransport) AddFileHashMap(hash string, key string) {
+	t.FileHashMap[hash] = key
+}
+
+
 // ListenAddr implements the Transport interface, which returns the listener address.
-func(t *TCPTransport) ListenAddr() string {
+func (t *TCPTransport) ListenAddr() string {
 	return t.ListenerPortAddr
 }
 
@@ -111,7 +121,7 @@ func (t *TCPTransport) ListenAndAccept() error {
 	return nil
 }
 
-//acceptAndLoop accepts connections from remote nodes and spawn a new go routine to handle each connection.
+// acceptAndLoop accepts connections from remote nodes and spawn a new go routine to handle each connection.
 func (t *TCPTransport) acceptAndLoop() {
 	for {
 		conn, err := t.listener.Accept()
@@ -127,7 +137,7 @@ func (t *TCPTransport) acceptAndLoop() {
 	}
 }
 
-//HandleConn handles the connection from remote node.
+// HandleConn handles the connection from remote node.
 func (t *TCPTransport) HandleConn(conn net.Conn, outbound bool) {
 	var err error
 	defer func() {
@@ -172,9 +182,8 @@ func (t *TCPTransport) HandleConn(conn net.Conn, outbound bool) {
 		//now insted of printing the decoded msg here that we recieved from peer,
 		//  we will send it to the rpcch channel
 		t.rpcch <- rpc
-		
-		fmt.Println("Sending again to rpcch channel")
+
+		// fmt.Println("Sending again to rpcch channel")
 	}
 
 }
-

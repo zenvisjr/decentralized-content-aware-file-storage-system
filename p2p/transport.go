@@ -22,4 +22,6 @@ type Transport interface {
 	ConsumeStream() <-chan Peer
 	Dial(string) error
 	Close() error
+	CheckFileHashMap(string) bool
+	AddFileHashMap(string, string)
 }
