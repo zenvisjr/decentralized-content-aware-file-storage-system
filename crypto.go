@@ -1,9 +1,11 @@
 package main
 
 import (
+	"crypto"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/hex"
@@ -12,20 +14,71 @@ import (
 	"log"
 )
 
-//generateID generates a random ID
+// func ensureKeyPair() error {
+// 	if _, err := os.Stat("private.pem"); os.IsNotExist(err) {
+// 		// fmt.Println("No key pair found, generating...")
+// 		return generateKeyPair()
+// 	}
+// 	// fmt.Println("Key pair already exists.")
+// 	return nil
+// }
+
+// func generateKeyPair() error {
+// 	// fmt.Println("Generating key pair...")
+// 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+// 	if err != nil {
+// 		return err
+// 	}
+
+// 	privFile, err := os.Create("private.pem")
+// 	if err != nil {
+// 		return err
+// 	}
+
+// 	defer privFile.Close()
+// 	if err := pem.Encode(privFile, &pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(privateKey)}); err != nil {
+// 		return err
+// 	}
+
+// 	pubFile, err := os.Create("public.pem")
+// 	if err != nil {
+// 		return err
+// 	}
+// 	defer pubFile.Close()
+// 	pubBytes, err := x509.MarshalPKIXPublicKey(&privateKey.PublicKey)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	if err := pem.Encode(pubFile, &pem.Block{Type: "PUBLIC KEY", Bytes: pubBytes}); err != nil {
+// 		return err
+// 	}
+
+// 	return nil
+// }
+
+// func LoadPublicKey() ([]byte, error ){
+// 	publicKey, err := os.ReadFile("public.pem")
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	return publicKey, nil
+
+// }
+
+// generateID generates a random ID
 func generateID() string {
 	buf := make([]byte, 32)
 	io.ReadFull(rand.Reader, buf)
 	return hex.EncodeToString(buf)
 }
 
-//hashKey hashes the given key using SHA-1
+// hashKey hashes the given key using SHA-1
 func hashKey(key string) string {
 	encKey := sha1.Sum([]byte(key))
 	return hex.EncodeToString(encKey[:])
 }
 
-//newEncryptionKey generates a random encryption key
+// newEncryptionKey generates a random encryption key
 func newEncryptionKey() []byte {
 	keyBuf := make([]byte, 32)
 	if _, err := io.ReadFull(rand.Reader, keyBuf); err != nil {
@@ -34,7 +87,7 @@ func newEncryptionKey() []byte {
 	return keyBuf
 }
 
-//copyStream copies data from src to dst using the given stream
+// copyStream copies data from src to dst using the given stream
 func copyStream(stream cipher.Stream, blockSize int, src io.Reader, dst io.Writer) (int, error) {
 
 	var (
@@ -70,7 +123,7 @@ func copyStream(stream cipher.Stream, blockSize int, src io.Reader, dst io.Write
 	return encyDataLen, nil
 }
 
-//copyEncrypt encrypts data from an input stream (src) and writes the encrypted result to an output stream (dist),
+// copyEncrypt encrypts data from an input stream (src) and writes the encrypted result to an output stream (dist),
 // using AES encryption in CTR mode (stream cipher style).
 func copyEncrypt(dist io.Writer, src io.Reader, key []byte) (int, error) {
 
@@ -98,7 +151,7 @@ func copyEncrypt(dist io.Writer, src io.Reader, key []byte) (int, error) {
 	return copyStream(stream, block.BlockSize(), src, dist)
 }
 
-//copyDecrypt decrypts data from src to dst using the given key
+// copyDecrypt decrypts data from src to dst using the given key
 func copyDecrypt(dist io.Writer, src io.Reader, key []byte) (int, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
@@ -129,4 +182,14 @@ func hashFileContent(r io.Reader) (string, int64, error) {
 	hashedFile := hasher.Sum(nil)
 	fmt.Println("hashed file", hashedFile)
 	return hex.EncodeToString(hashedFile), n, nil
+}
+
+func signSignature(data []byte, priv *rsa.PrivateKey) ([]byte, error) {
+	hash := sha256.Sum256(data)
+	return rsa.SignPKCS1v15(rand.Reader, priv, crypto.SHA256, hash[:])
+}
+
+func verifySignature(data, sig []byte, pub *rsa.PublicKey) error {
+	hash := sha256.Sum256(data)
+	return rsa.VerifyPKCS1v15(pub, crypto.SHA256, hash[:], sig)
 }

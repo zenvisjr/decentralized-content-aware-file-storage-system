@@ -161,9 +161,12 @@ func runCommandLoop(fs *FileServer) {
 			defer f.Close()
 
 			key := filepath.Base(args[1])
+			// f := bytes.NewReader([]byte("hello watashino soul society"))
+			// key := "hello"
 			if err := fs.Store(key, f); err != nil {
 				fmt.Println("Error storing data", err)
 			}
+			time.Sleep(2 * time.Second)
 
 		case "get":
 			if len(args) != 2 {

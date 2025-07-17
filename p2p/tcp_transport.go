@@ -32,6 +32,8 @@ func (t *TCPPeer) Send(b []byte) error {
 }
 
 func (t *TCPPeer) CloseStream() {
+	// time.Sleep(10 * time.Second)
+	fmt.Println("Closing stream")
 	t.wg.Done()
 
 }
@@ -71,7 +73,6 @@ func (t *TCPTransport) CheckFileHashMap(hash string) bool {
 func (t *TCPTransport) AddFileHashMap(hash string, key string) {
 	t.FileHashMap[hash] = key
 }
-
 
 // ListenAddr implements the Transport interface, which returns the listener address.
 func (t *TCPTransport) ListenAddr() string {
@@ -183,7 +184,7 @@ func (t *TCPTransport) HandleConn(conn net.Conn, outbound bool) {
 		//  we will send it to the rpcch channel
 		t.rpcch <- rpc
 
-		// fmt.Println("Sending again to rpcch channel")
+		fmt.Println("Sending again to rpcch channel")
 	}
 
 }

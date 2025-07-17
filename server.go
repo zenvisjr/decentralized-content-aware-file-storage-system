@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/binary"
 	"encoding/gob"
 	"fmt"
@@ -66,7 +67,8 @@ type MessageStoreFile struct {
 	Key string
 	ID  string
 	// Ext  string
-	Size int64
+	Size      int64
+	Signature []byte
 }
 
 type MessageGetFile struct {
@@ -90,8 +92,8 @@ func (f *FileServer) Store(key string, r io.Reader) error {
 	//2. broadcast the file to other peers in the network
 
 	var (
-		fileBuffer = new(bytes.Buffer)
-		tee        = io.TeeReader(r, fileBuffer)
+		fileBuffer bytes.Buffer
+		tee        = io.TeeReader(r, &fileBuffer)
 	)
 	// fileHash, size, err := hashFileContent(fileBuffer)
 	// if err != nil {
@@ -99,28 +101,59 @@ func (f *FileServer) Store(key string, r io.Reader) error {
 	// }
 
 	// if keyExist, ok := f.store.HashMap[fileHash]; !ok {
-		// f.store.HashMap[fileHash] = key
+	// f.store.HashMap[fileHash] = key
 
-		// fmt.Println("Storing file to disk")
-		size, err := f.store.Write(f.ID, key, tee)
-		if err != nil {
-			return err
-		}
+	fmt.Println("Storing file to disk")
+	size, err := f.store.Write(f.ID, key, tee)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Original file size stored to disk: %d bytes\n", size)
+
 
 	// } else {
 	// 	fmt.Println("File already exists with key", keyExist)
 	// }
 
+	privKey, err := p2p.LoadPrivateKey()
+	if err != nil {
+		return err
+	}
+
+	var teeBuf bytes.Buffer
+	// Now read from fileBuffer (convert to reader) and tee to teeBuf
+	fileReader := bytes.NewReader(fileBuffer.Bytes())
+	teeReader := io.TeeReader(fileReader, &teeBuf)
+
+	fmt.Printf("Original file size before encryption: %d bytes\n", len(fileBuffer.Bytes()))
+	fmt.Println("Original file hash:", sha256.Sum256(fileBuffer.Bytes()))
+
+	n, err := copyEncrypt(&teeBuf, teeReader, f.EncKey)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Size returned by copyEncrypt: %d bytes\n", n)
+	fmt.Printf("Actual teeBuf size: %d bytes\n", len(teeBuf.Bytes()))
+	fmt.Printf("Encrypted data hash (IV + encrypted): %x\n", sha256.Sum256(teeBuf.Bytes()))
+
+	signature, err := signSignature(teeBuf.Bytes(), privKey) // fileBuffer already contains full file
+	if err != nil {
+		return err
+	}
+
 	msg := Message{
 		Payload: MessageStoreFile{
 			Key:  hashKey(key) + getExtension(key),
-			Size: size + 16,
+			Size: int64(len(teeBuf.Bytes())),
 			ID:   f.ID,
 			// Ext:  getExtension(key),
+			Signature: signature,
 		},
 	}
 
 	fmt.Println("Broadcasting file to other peers")
+	fmt.Printf("Message size: %d bytes\n", msg.Payload.(MessageStoreFile).Size)
+
 	if err := f.broadcast(&msg); err != nil {
 		return err
 	}
@@ -135,12 +168,16 @@ func (f *FileServer) Store(key string, r io.Reader) error {
 	mw := io.MultiWriter(peers...)
 	fmt.Println("Streaming file to other peers")
 	mw.Write([]byte{p2p.IncommingStream})
-	n, err := copyEncrypt(mw, fileBuffer, f.EncKey)
+	// Create a fresh reader from the original file data for streaming
+	// Stream the encrypted data (IV + encrypted data) to peers
+	encryptedReader := bytes.NewReader(teeBuf.Bytes())
+
+	nw, err := io.Copy(mw, encryptedReader)
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("[%s] Recieved and written (%d) bytes to disk\n", f.Transort.ListenAddr(), n)
+	fmt.Printf("[%s] Recieved and written (%d) bytes to disk\n", f.Transort.ListenAddr(), nw)
 
 	return nil
 }
@@ -445,30 +482,67 @@ func (f *FileServer) handleMessageStoreFile(from string, msg *MessageStoreFile) 
 	}
 
 	lr := io.LimitReader(peer, msg.Size)
-	// var decryptedBuf bytes.Buffer
+	fmt.Println("size of limit reader", msg.Size)
 
-	// if _, err := copyDecrypt(&decryptedBuf, lr, f.EncKey); err != nil {
-	// 	return err
+	fmt.Println("starting")
+	// var decryptedFile bytes.Buffer
+	// if _, err := copyDecrypt(&decryptedFile, lr, f.EncKey); err != nil {
+	// 	return fmt.Errorf("decryption failed: %w", err)
 	// }
-	// fmt.Println("decrypted")
-	// hash, _, err := hashFileContent(&decryptedBuf)
-	// if err != nil {
-	// 	return err
+
+	// if err := verifySignature(decryptedFile.Bytes(), msg.Signature, peerPublicKey); err != nil {
+	// 	log.Printf("Signature verification failed from peer %s: %v", from, err)
+	// 	return fmt.Errorf("signature verification failed: %w", err)
 	// }
-	// fmt.Println("hashed")
-	// if ok := f.Transort.CheckFileHashMap(hash); ok {
-	// 	return fmt.Errorf("[%s] file %s already exists on the peer [%s]", f.Transort.ListenAddr(), hash, from)
-	// }
-	// fmt.Println("checked")
-	// f.Transort.AddFileHashMap(hash, msg.Key)
-	// fmt.Println("added")
-	// n, err := f.store.Write(msg.ID, msg.Key, bytes.NewReader(decryptedBuf.Bytes()))
+	// fmt.Printf("Signature verified from peer %s\n", from)
+	// panic("not implemented")
+	time.Sleep(1 * time.Second)
 	n, err := f.store.Write(msg.ID, msg.Key, lr)
+	time.Sleep(1 * time.Second)
+	// panic("not implemented")
+	fmt.Printf("[%s] Write completed.\n", f.Transort.ListenAddr())
 	if err != nil {
 		return err
 	}
-	fmt.Println("written")
+
+	// panic("not implemented")
 	fmt.Printf("[%s] Written (%d) bytes to disk\n", f.Transort.ListenAddr(), n)
+
+	_, reader, err, _ := f.store.Read(msg.ID, msg.Key)
+	if err != nil {
+		return err
+	}
+	fmt.Println("Read")
+
+	// Read all encrypted data into buffer for signature verification
+	var encryptedData bytes.Buffer
+	if _, err := io.Copy(&encryptedData, reader); err != nil {
+		return fmt.Errorf("failed to read encrypted data from disk: %w", err)
+	}
+	fmt.Println("Encrypted data length", len(encryptedData.Bytes()))
+	fmt.Printf("Encrypted data hash: %x\n", sha256.Sum256(encryptedData.Bytes()))
+	// var decryptedData bytes.Buffer
+	// if _, err := copyDecrypt(&decryptedData, reader, f.EncKey); err != nil {
+	// 	return fmt.Errorf("decryption failed: %w", err)
+	// }
+	// fmt.Println("Decrypted data length", len(decryptedData.Bytes()))
+	// fmt.Println("Decrypted data hash", sha256.Sum256(decryptedData.Bytes()))
+
+	// Step 4: Get public key and verify
+	peerPublicKey, ok := p2p.GetPeerPublicKey(from)
+	if !ok {
+		f.DeleteLocal(msg.Key)
+		return fmt.Errorf("peer %s public key not found", from)
+	}
+	fmt.Println("Peer public key", peerPublicKey)
+	if err := verifySignature(encryptedData.Bytes(), msg.Signature, peerPublicKey); err != nil {
+		log.Printf("Signature verification failed from peer %s: %v", from, err)
+		f.DeleteLocal(msg.Key)
+		return fmt.Errorf("signature verification failed: %w", err)
+	}
+
+	fmt.Printf("Signature verified from peer %s\n", from)
+	// panic("not implemented")
 	peer.CloseStream()
 	return nil
 }

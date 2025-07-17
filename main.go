@@ -3,10 +3,10 @@ package main
 import (
 	"encoding/gob"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"time"
+	"github.com/zenvisjr/distributed-file-storage-system/p2p"
 )
 
 func main() {
@@ -17,6 +17,10 @@ func main() {
 	// 	fmt.Println("Please provide a file name and location")
 	// 	return
 	// }
+
+	if err := p2p.EnsureKeyPair(); err != nil {
+		log.Fatalf("Key generation failed: %v", err)
+	}
 
 	fmt.Println("LETS START COOKING")
 
@@ -33,7 +37,7 @@ func main() {
 	s1.store.ClearRoot()
 	s4.store.ClearRoot()
 
-	// runCommandLoop(s3)
+	runCommandLoop(s3)
 
 	// s1 := makeServer(":3000", "", ":8000")
 	// s2 := makeServer(":4000", ":3000")
@@ -90,28 +94,28 @@ func main() {
 	// 	fmt.Println("Error deleting data", err)
 	// }
 
-	time.Sleep(500 * time.Millisecond)
-	if err := s3.DeleteLocal(key); err != nil {
-		fmt.Println("Error deleting data", err)
-	}
+	// time.Sleep(500 * time.Millisecond)
+	// if err := s3.DeleteLocal(key); err != nil {
+	// 	fmt.Println("Error deleting data", err)
+	// }
 
-	// // time.Sleep(500 * time.Millisecond)
+	// // // time.Sleep(500 * time.Millisecond)
 
-	rd, flLocation, err := s3.Get(key)
-	if err != nil {
-		log.Fatal("Error getting data\n", err)
-	}
-	ext := getExtension(key)
-	if len(ext) == 0 {
-		n, err := io.ReadAll(rd)
+	// rd, flLocation, err := s3.Get(key)
+	// if err != nil {
+	// 	log.Fatal("Error getting data\n", err)
+	// }
+	// ext := getExtension(key)
+	// if len(ext) == 0 {
+	// 	n, err := io.ReadAll(rd)
 
-		if err != nil {
-			log.Fatal("Error reading data ", err)
-		}
-		fmt.Println(string(n))
+	// 	if err != nil {
+	// 		log.Fatal("Error reading data ", err)
+	// 	}
+	// 	fmt.Println(string(n))
 
-	}
-	fmt.Println("Retrived file location", flLocation)
+	// }
+	// fmt.Println("Retrived file location", flLocation)
 
 }
 
@@ -123,4 +127,5 @@ func init() {
 	gob.Register(MessageGetFile{})
 	gob.Register(MessageDeleteFile{})
 	gob.Register(MessageGetFileNotFound{})
+
 }

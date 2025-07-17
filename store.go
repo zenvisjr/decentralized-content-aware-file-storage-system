@@ -112,6 +112,7 @@ func (s *Store) Read(id string, key string) (int64, io.Reader, error, string) {
 // Writes the file to disk
 func (s *Store) Write(id, key string, w io.Reader) (int64, error) {
 	// fmt.Println("executing write")
+	// panic("not implemented")
 	return s.writeStream(id, key, w)
 }
 
@@ -213,8 +214,8 @@ func (s *Store) writeStream(id, key string, r io.Reader) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer fd.Close()
-	// fmt.Println("File created")
+	// defer fd.Close()
+	fmt.Println("File created")
 
 	//writing to disk on the file location
 	//remember our data is in the buf as we already copied it
@@ -222,10 +223,11 @@ func (s *Store) writeStream(id, key string, r io.Reader) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	// fmt.Println("Data written to file")
+	fmt.Println("Data written to file")
 
 	//logging the written bytes
 	log.Printf("Written (%d) bytes to disk\n", n)
+	// panic("not implemented")
 	return n, nil
 }
 
