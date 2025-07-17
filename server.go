@@ -26,11 +26,11 @@ type FileServerOps struct {
 // FileServer represents a file server.
 type FileServer struct {
 	FileServerOps
-	store              *Store
-	quitch             chan struct{}
-	peerLock           sync.Mutex
-	peers              map[string]p2p.Peer
-	notFoundChan       chan struct{}
+	store        *Store
+	quitch       chan struct{}
+	peerLock     sync.Mutex
+	peers        map[string]p2p.Peer
+	notFoundChan chan struct{}
 	// incomingStreamChan chan p2p.Peer
 }
 
@@ -48,12 +48,12 @@ func NewFileServer(ops FileServerOps) (*FileServer, error) {
 	}
 
 	return &FileServer{
-		FileServerOps:      ops,
-		store:              NewStore(*storeOps),
-		quitch:             make(chan struct{}),
-		peerLock:           sync.Mutex{},
-		peers:              make(map[string]p2p.Peer),
-		notFoundChan:       make(chan struct{}, 100),
+		FileServerOps: ops,
+		store:         NewStore(*storeOps),
+		quitch:        make(chan struct{}),
+		peerLock:      sync.Mutex{},
+		peers:         make(map[string]p2p.Peer),
+		notFoundChan:  make(chan struct{}, 100),
 	}, nil
 }
 
@@ -164,20 +164,27 @@ func (f *FileServer) Get(key string) (io.Reader, string, error) {
 
 	time.Sleep(500 * time.Millisecond)
 	noOfPeers := len(f.peers)
-	notFound := 0
+	notFound := 0 //tracks peers that explicitly said “I don’t have it.”
+	received := 0  //counts any kind of peer response — stream or not-found
+
+	//why recieved? so that we can count all responses and if responses == no of peers 
+	//it means we were unable to fetch the file from any peer
 
 	for {
 		fmt.Println("receiving from peer")
 
 		select {
 		case <-f.notFoundChan:
+			fmt.Println("Peer responded: not found")
 			notFound++
+			received++  // we will count response even if stream fails later
 			if notFound == noOfPeers {
 				return nil, "", fmt.Errorf("[%s] and all its peers don't have file [%s]", f.Transort.ListenAddr(), key)
 			}
 
 		case streamPeer := <-f.Transort.ConsumeStream():
-			fmt.Println("Received stream")
+			fmt.Println("Peer responded: stream")
+			received++
 			// Only process if this is the same peer
 			// if streamPeer.RemoteAddr().String() != peer.RemoteAddr().String() {
 			// 	fmt.Printf("Skipping peer %s, stream came from %s\n", peer.RemoteAddr().String(), streamPeer.RemoteAddr().String())
@@ -186,15 +193,18 @@ func (f *FileServer) Get(key string) (io.Reader, string, error) {
 
 			var fileSize int64
 			if err := binary.Read(streamPeer, binary.LittleEndian, &fileSize); err != nil {
-				return nil, "", err
+				fmt.Println("failed to read fileSize from stream, skipping peer")
+				continue
 			}
 			n, err := f.store.WriteDecrypted(f.ID, key, f.EncKey, io.LimitReader(streamPeer, fileSize))
 			if err != nil {
-				return nil, "", err
+				fmt.Println("failed to write file to disk, skipping peer")
+				continue
 			}
 			fmt.Printf("[%s] received (%d) bytes from peer %s\n", f.Transort.ListenAddr(), n, streamPeer.RemoteAddr().String())
 			streamPeer.CloseStream()
 
+			//now we have the file on disk, if we are unable to read it we will simply return error
 			_, r, err, fileLocation := f.store.Read(f.ID, key)
 			if err != nil {
 				return nil, "", err
@@ -202,10 +212,16 @@ func (f *FileServer) Get(key string) (io.Reader, string, error) {
 			// fmt.Printf("[%s] File location %s\n", f.Transort.ListenAddr(), fileLocation)
 			return r, fileLocation, nil
 
+
 		case <-time.After(2 * time.Second):
 			// Timeout waiting for this peer — skip
+			if received == noOfPeers {
+				return nil, "", fmt.Errorf("[%s] peers were not able to fetch file [%s]", f.Transort.ListenAddr(), key)
+			}
 			continue
 		}
+
+
 	}
 	// return nil, "", nil
 
@@ -304,7 +320,7 @@ func (f *FileServer) loop() {
 			// 	fmt.Println("RPC Payload", rpc.Payload[0])
 			// if rpc.Stream {
 			// 	peer := f.peers[rpc.From]
-				// f.incomingStreamChan <- f.peers[rpc.From]
+			// f.incomingStreamChan <- f.peers[rpc.From]
 			// 	continue
 			// }
 			// fmt.Printf("Received %+v\n", msg)
@@ -383,16 +399,16 @@ func (f *FileServer) handleMessageGetFile(from string, msg *MessageGetFile) erro
 
 	// First send the "incomingStream" byte to the peer and then we can send
 	// the file size as an int64.
-	
+
 	peer.Send([]byte{p2p.IncommingStream})
 	binary.Write(peer, binary.LittleEndian, fileSize)
-	
+
 	// fmt.Println("Received RPC", rpc)
 	// fmt.Println("RPC Payload", rpc.Payload[0])
 	// if rpc.Payload[0] == p2p.IncommingStream {
 	// 	fmt.Println("RPC Payload", rpc.Payload[0])
-		// peer := f.peers[from]
-		
+	// peer := f.peers[from]
+
 	// 	continue
 	// }
 
