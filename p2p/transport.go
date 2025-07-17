@@ -19,6 +19,7 @@ type Transport interface {
 	ListenAddr() string
 	ListenAndAccept() error
 	Consume() <-chan RPC
+	ConsumeStream() <-chan Peer
 	Dial(string) error
 	Close() error
 }

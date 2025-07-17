@@ -31,6 +31,7 @@ type FileServer struct {
 	peerLock           sync.Mutex
 	peers              map[string]p2p.Peer
 	notFoundChan       chan struct{}
+	// incomingStreamChan chan p2p.Peer
 }
 
 // NewFileServer creates a new FileServer instance.
@@ -165,35 +166,48 @@ func (f *FileServer) Get(key string) (io.Reader, string, error) {
 	noOfPeers := len(f.peers)
 	notFound := 0
 
-	for _, peer := range f.peers {
-		fmt.Printf("receiving from peer %s\n", peer.RemoteAddr().String())
+	for {
+		fmt.Println("receiving from peer")
 
-		for len(f.notFoundChan) > 0 {
-			<-f.notFoundChan
+		select {
+		case <-f.notFoundChan:
 			notFound++
 			if notFound == noOfPeers {
 				return nil, "", fmt.Errorf("[%s] and all its peers don't have file [%s]", f.Transort.ListenAddr(), key)
 			}
-		}
 
-		var fileSize int64
-		if err := binary.Read(peer, binary.LittleEndian, &fileSize); err != nil {
-			return nil, "", err
-		}
-		n, err := f.store.WriteDecrypted(f.ID, key, f.EncKey, io.LimitReader(peer, fileSize))
-		if err != nil {
-			return nil, "", err
-		}
-		fmt.Printf("[%s] received (%d) bytes from peer %s\n", f.Transort.ListenAddr(), n, peer.RemoteAddr().String())
-		peer.CloseStream()
-	}
+		case streamPeer := <-f.Transort.ConsumeStream():
+			fmt.Println("Received stream")
+			// Only process if this is the same peer
+			// if streamPeer.RemoteAddr().String() != peer.RemoteAddr().String() {
+			// 	fmt.Printf("Skipping peer %s, stream came from %s\n", peer.RemoteAddr().String(), streamPeer.RemoteAddr().String())
+			// 	continue
+			// }
 
-	_, r, err, fileLocation := f.store.Read(f.ID, key)
-	if err != nil {
-		return nil, "", err
+			var fileSize int64
+			if err := binary.Read(streamPeer, binary.LittleEndian, &fileSize); err != nil {
+				return nil, "", err
+			}
+			n, err := f.store.WriteDecrypted(f.ID, key, f.EncKey, io.LimitReader(streamPeer, fileSize))
+			if err != nil {
+				return nil, "", err
+			}
+			fmt.Printf("[%s] received (%d) bytes from peer %s\n", f.Transort.ListenAddr(), n, streamPeer.RemoteAddr().String())
+			streamPeer.CloseStream()
+
+			_, r, err, fileLocation := f.store.Read(f.ID, key)
+			if err != nil {
+				return nil, "", err
+			}
+			// fmt.Printf("[%s] File location %s\n", f.Transort.ListenAddr(), fileLocation)
+			return r, fileLocation, nil
+
+		case <-time.After(2 * time.Second):
+			// Timeout waiting for this peer — skip
+			continue
+		}
 	}
-	fmt.Printf("[%s] File location %s\n", f.Transort.ListenAddr(), fileLocation)
-	return r, fileLocation, nil
+	// return nil, "", nil
 
 }
 
@@ -284,14 +298,23 @@ func (f *FileServer) loop() {
 	for {
 		select {
 		case rpc := <-f.Transort.Consume():
-
+			// fmt.Println("Received RPC", rpc)
+			// fmt.Println("RPC Payload", rpc.Payload[0])
+			// if rpc.Payload[0] == p2p.IncommingStream {
+			// 	fmt.Println("RPC Payload", rpc.Payload[0])
+			// if rpc.Stream {
+			// 	peer := f.peers[rpc.From]
+				// f.incomingStreamChan <- f.peers[rpc.From]
+			// 	continue
+			// }
+			// fmt.Printf("Received %+v\n", msg)
 			var msg Message
 			if err := gob.NewDecoder(bytes.NewReader(rpc.Payload)).Decode(&msg); err != nil {
-				log.Println("decoding error", err)
+				// log.Println("decoding error", err)
 				continue
 			}
 			if err := f.HandleMessage(rpc.From, &msg); err != nil {
-				log.Println("handling message error", err)
+				log.Println("handling type of message error", err)
 				continue
 			}
 
@@ -360,14 +383,16 @@ func (f *FileServer) handleMessageGetFile(from string, msg *MessageGetFile) erro
 
 	// First send the "incomingStream" byte to the peer and then we can send
 	// the file size as an int64.
+	
 	peer.Send([]byte{p2p.IncommingStream})
 	binary.Write(peer, binary.LittleEndian, fileSize)
+	
 	// fmt.Println("Received RPC", rpc)
 	// fmt.Println("RPC Payload", rpc.Payload[0])
 	// if rpc.Payload[0] == p2p.IncommingStream {
 	// 	fmt.Println("RPC Payload", rpc.Payload[0])
-	// peer := f.peers[from]
-	// f.incomingStreamChan <- peer
+		// peer := f.peers[from]
+		
 	// 	continue
 	// }
 
@@ -375,6 +400,7 @@ func (f *FileServer) handleMessageGetFile(from string, msg *MessageGetFile) erro
 	if err != nil {
 		return err
 	}
+	// f.incomingStreamChan <- peer
 	fmt.Printf("[%s] Written (%d) bytes to peer %s over network\n", f.Transort.ListenAddr(), n, from)
 	return nil
 

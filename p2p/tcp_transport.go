@@ -51,6 +51,7 @@ type TCPTransport struct {
 	TCPTransportOps
 	listener net.Listener
 	rpcch    chan RPC
+	incomingStreamChan chan Peer
 }
 
 // NewTCPTransport creates a new TCPTransport instance.
@@ -58,6 +59,7 @@ func NewTCPTransport(ops TCPTransportOps) (t *TCPTransport, err error) {
 	return &TCPTransport{
 		TCPTransportOps: ops,
 		rpcch:           make(chan RPC, 1024),
+		incomingStreamChan: make(chan Peer, 1024),
 	}, nil
 }
 
@@ -70,6 +72,12 @@ func(t *TCPTransport) ListenAddr() string {
 // for reading the incoming messages received from another peer in the network.
 func (t *TCPTransport) Consume() <-chan RPC {
 	return t.rpcch
+}
+
+// ConsumeStream implements the Tranport interface, which will return read-only channel
+// for reading the incoming messages received from another peer in the network.
+func (t *TCPTransport) ConsumeStream() <-chan Peer {
+	return t.incomingStreamChan
 }
 
 // Close implements the Transport interface
@@ -153,6 +161,7 @@ func (t *TCPTransport) HandleConn(conn net.Conn, outbound bool) {
 		}
 		rpc.From = conn.RemoteAddr().String()
 		if rpc.Stream {
+			t.incomingStreamChan <- peer
 			peer.wg.Add(1)
 			fmt.Printf("incomming stream from peer [%s], WAITING....\n", peer.RemoteAddr().String())
 			peer.wg.Wait()

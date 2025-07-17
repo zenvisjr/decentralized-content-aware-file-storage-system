@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/gob"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"time"
@@ -96,21 +97,21 @@ func main() {
 
 	// time.Sleep(500 * time.Millisecond)
 
-	// rd, flLocation, err := s3.Get(key)
-	// if err != nil {
-	// 	log.Fatal("Error getting data\n", err)
-	// }
-	// ext := getExtension(key)
-	// if len(ext) == 0 {
-	// 	n, err := io.ReadAll(rd)
+	rd, flLocation, err := s3.Get(key)
+	if err != nil {
+		log.Fatal("Error getting data\n", err)
+	}
+	ext := getExtension(key)
+	if len(ext) == 0 {
+		n, err := io.ReadAll(rd)
 
-	// 	if err != nil {
-	// 		log.Fatal("Error reading data ", err)
-	// 	}
-	// 	fmt.Println(string(n))
+		if err != nil {
+			log.Fatal("Error reading data ", err)
+		}
+		fmt.Println(string(n))
 
-	// }
-	// fmt.Println("Retrived file location", flLocation)
+	}
+	fmt.Println("Retrived file location", flLocation)
 
 }
 
