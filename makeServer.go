@@ -67,6 +67,9 @@ func makeServer(configFile *ServerConfig) *FileServer {
 		EncKey:            newEncryptionKey(),
 		// EncKey:            []byte("yokoso"),
 	}
+
+
+
 	// fmt.Println(fileServerOps)
 
 	newFileServer, _ := NewFileServer(fileServerOps)

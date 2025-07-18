@@ -217,7 +217,7 @@ func (s *Store) readStream(id string, key string) (int64, io.ReadCloser, error, 
 		return 0, nil, err, ""
 	}
 	fileLocation, _ := filepath.Abs(fullPathWithRoot)
-	fmt.Println("File location", fileLocation)
+	// fmt.Println("File location", fileLocation)
 
 	return f.Size(), fd, nil, fileLocation
 
@@ -230,7 +230,7 @@ func (s *Store) writeStream(id, key string, r io.Reader) (int64, error) {
 		return 0, err
 	}
 	// defer fd.Close()
-	fmt.Println("File created")
+	// fmt.Println("File created")
 
 	//writing to disk on the file location
 	//remember our data is in the buf as we already copied it
@@ -238,7 +238,7 @@ func (s *Store) writeStream(id, key string, r io.Reader) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	fmt.Println("Data written to file")
+	// fmt.Println("Data written to file")
 
 	//logging the written bytes
 	log.Printf("Written (%d) bytes to disk\n", n)

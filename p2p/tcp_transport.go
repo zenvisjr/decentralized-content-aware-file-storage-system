@@ -33,7 +33,7 @@ func (t *TCPPeer) Send(b []byte) error {
 
 func (t *TCPPeer) CloseStream() {
 	// time.Sleep(10 * time.Second)
-	fmt.Println("Closing stream")
+	// fmt.Println("Closing stream")
 	t.wg.Done()
 
 }
@@ -163,7 +163,7 @@ func (t *TCPTransport) HandleConn(conn net.Conn, outbound bool) {
 	}
 
 	for {
-		// fmt.Println("Waiting for message from peer", peer.RemoteAddr().String())
+		fmt.Println("Waiting for message from peer", peer.RemoteAddr().String())
 		rpc := RPC{}
 		err = t.Decoder.Decode(conn, &rpc)
 		if err != nil {

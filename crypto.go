@@ -31,11 +31,11 @@ func hashKey(key string) string {
 
 // newEncryptionKey generates a random encryption key
 func newEncryptionKey() []byte {
-	keyBuf := make([]byte, 32)
-	if _, err := io.ReadFull(rand.Reader, keyBuf); err != nil {
+	enckeyBuf := make([]byte, 32)
+	if _, err := io.ReadFull(rand.Reader, enckeyBuf); err != nil {
 		log.Panic(err)
 	}
-	return keyBuf
+	return enckeyBuf
 }
 
 // copyStream copies data from src to dst using the given stream

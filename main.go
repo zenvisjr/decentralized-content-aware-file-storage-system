@@ -6,25 +6,33 @@ import (
 	"log"
 	"os"
 	"time"
+
 	"github.com/zenvisjr/distributed-file-storage-system/p2p"
 )
 
-func main() {
-	// fileLocation := flag.String("file", "", "file name and location that you want to store on server")
-	// flag.Parse()
 
-	// if len(os.Args) < 2 {
-	// 	fmt.Println("Please provide a file name and location")
-	// 	return
-	// }
+func init() {
+	gob.Register(MessageStoreFile{}) 
+	gob.Register(MessageGetFile{})
+	gob.Register(MessageDeleteFile{})
+	gob.Register(MessageGetFileNotFound{})
+	gob.Register(MessageStoreAck{})
+
+}
+
+
+func main() {
 
 	if err := p2p.EnsureKeyPair(); err != nil {
 		log.Fatalf("Key generation failed: %v", err)
 	}
 
+
+
 	fmt.Println("LETS START COOKING")
 
 	servers := completeServerSetup()
+
 	s3 := servers[":5000"]
 	s2 := servers[":4000"]
 	s1 := servers[":3000"]
@@ -39,51 +47,14 @@ func main() {
 
 	runCommandLoop(s3)
 
-	// s1 := makeServer(":3000", "", ":8000")
-	// s2 := makeServer(":4000", ":3000")
-	// s3 := makeServer(":5000", ":3000", ":4000", ":8000")
-	// s4 := makeServer(":8000", "")
 
-	// go func() {
-	// 	log.Fatal(s1.Start())
-	// }()
-
-	// time.Sleep(50 * time.Millisecond)
-
-	// go func() {
-	// 	log.Fatal(s2.Start())
-	// }()
-
-	// time.Sleep(50 * time.Millisecond)
-
-	// go func() {
-	// 	log.Fatal(s3.Start())
-	// }()
-
-	// go func() {
-	// 	log.Fatal(s4.Start())
-	// }()
-
-	// time.Sleep(50 * time.Millisecond)
-
-	// createFile()
 	key := "bill.pdf"
 	f, err := os.Open(key)
 	if err != nil {
 		log.Fatal(err)
 	}
-	// // // ext := filepath.Ext(f.Name())
-	// // // size, _ := f.Stat()
 
-	// // defer f.Close()
-
-	// // log.Println("Done opening file")
-
-	// // start := time.Now()
-	// // for i := 0; i < 1; i++ {
-	// // key := fmt.Sprintf("bill.pdf", i)
-	// // key := filepath.Base(*fileLocation)
-	// // fmt.Println("Key", key)
+	// key := "aizen"
 	// // // f := bytes.NewReader([]byte("hello watashino soul society"))
 	if err := s3.Store(key, f); err != nil {
 		fmt.Println("Error storing data", err)
@@ -115,17 +86,5 @@ func main() {
 	// 	fmt.Println(string(n))
 
 	// }
-	// fmt.Println("Retrived file location", flLocation)
-
 }
 
-// fmt.Println("Time taken to store file", time.Since(start))
-// }
-
-func init() {
-	gob.Register(MessageStoreFile{}) // Register the pointer form too
-	gob.Register(MessageGetFile{})
-	gob.Register(MessageDeleteFile{})
-	gob.Register(MessageGetFileNotFound{})
-
-}

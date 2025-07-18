@@ -4,7 +4,7 @@
 <!-- <img src="readmeai/assets/logos/purple.svg" width="30%" align="left" style="margin-right: 15px"> -->
 
 # DECENTRALIZED-CONTENT-AWARE-SECURE-FILE-STORAGE-SYSTEM
-<em>Decentralized. Secure. Scalable. Redefining Distributed File Storage.</em>
+<em>Decentralized. Secure. Scalable. Distributed File Storage.</em>
 
 <!-- BADGES -->
 <!-- <img src="https://img.shields.io/github/license/zenvisjr/decentralized-secure-content-aware-file-storage-system?style=flat-square&logo=opensourceinitiative&logoColor=white&color=00ADD8" alt="license"> -->
@@ -18,21 +18,18 @@
 
 ## ☀️ Table of Contents
 
-- [☀ ️ Table of Contents](#table-of-contents)
-- [🌞 Overview](#overview)
-- [🔥 Features](#features)
-- [🌅 Project Structure](#project-structure)
-    - [🌄 Project Index](#project-index)
-- [🚀 Getting Started](#getting-started)
-    - [🌟 Prerequisites](#-prerequisites)
-    - [⚡ Installation](#-installation)
-    - [🔆 Usage](#-usage)
-    - [🌠 Testing](#-testing)
-- [🌻 Roadmap](#-roadmap)
+- [☀️ Table of Contents](#️-table-of-contents)
+- [🌞 Overview](#-overview)
+- [🔥 Features](#-features)
+- [🌅 Project Structure](#-project-structure)
+  - [🌄 Project Index](#-project-index)
+- [🚀 Getting Started](#-getting-started)
+  - [🌟 Prerequisites](#-prerequisites)
+  - [⚡ Installation & Setup](#-installation--setup)
+- [🔆 Usage](#-usage)
+- [🏗️ System Architecture Overview](#️-system-architecture-overview)
+- [🧩 Architecture Flow](#-architecture-flow)
 - [🤝 Contributing](#-contributing)
-- [📜 License](#-license)
-- [✨ Acknowledgments](#-acknowledgments)
-
 
 
 ---
@@ -128,47 +125,58 @@ The **Decentralized Secure Content-Aware File Storage System** is a peer-to-peer
 			</thead>
 				<tr style='border-bottom: 1px solid #eee;'>
 					<td style='padding: 8px;'><b><a href='https://github.com/zenvisjr/decentralized-secure-content-aware-file-storage-system/blob/master/makeServer.go'>makeServer.go</a></b></td>
-					<td style='padding: 8px;'>- MakeServer.go is primarily responsible for setting up and managing a decentralized file server in this distributed file storage system<br>- It facilitates the creation of servers, handling of configuration files, and execution of user commands such as storing, retrieving, and deleting files<br>- This forms a vital part of the projects peer-to-peer communication infrastructure.</td>
+					<td style='padding: 8px;'>Initializes and manages decentralized file server instances. Loads config files, sets up peers, starts the server, and handles commands like store, get, and delete within the peer-to-peer network.</td>
 				</tr>
 				<tr style='border-bottom: 1px solid #eee;'>
 					<td style='padding: 8px;'><b><a href='https://github.com/zenvisjr/decentralized-secure-content-aware-file-storage-system/blob/master/crypto.go'>crypto.go</a></b></td>
-					<td style='padding: 8px;'>- Crypto.go serves as the cryptographic core of the project, providing functionality for secure data handling<br>- It facilitates the generation of random IDs and encryption keys, offers SHA-1 hashing, and is instrumental in both encrypting and decrypting streams of data<br>- Additionally, it implements signature functionalities using RSA and SHA256 for data verification.</td>
+					<td style='padding: 8px;'>Provides cryptographic utilities for AES encryption/decryption, SHA-1 hashing, random ID/key generation, and RSA-SHA256 digital signature handling for data integrity and verification.</td>
 				</tr>
 				<tr style='border-bottom: 1px solid #eee;'>
 					<td style='padding: 8px;'><b><a href='https://github.com/zenvisjr/decentralized-secure-content-aware-file-storage-system/blob/master/go.mod'>go.mod</a></b></td>
-					<td style='padding: 8px;'>- Go.mod in the project distributed-file-storage-system defines the module path and specifies the Go language version and required dependencies<br>- It aids in ensuring consistent, reproducible builds by pinning specific versions of dependencies, including go-spew, go-difflib, testify and yaml.v3.</td>
+					<td style='padding: 8px;'>Defines module dependencies and Go version for consistent builds.</td>
 				</tr>
 				<tr style='border-bottom: 1px solid #eee;'>
 					<td style='padding: 8px;'><b><a href='https://github.com/zenvisjr/decentralized-secure-content-aware-file-storage-system/blob/master/server.go'>server.go</a></b></td>
-					<td style='padding: 8px;'>- Server.go<code>The </code>server.go<code> file is integral to the operation of the Distributed File Storage System<br>- This file primarily serves as the backbone of the file server within the system, and it is responsible for managing the distributed file storage architecture.The key purpose of </code>server.go<code> is to define the operations and structure of the file server, and to initialize new file server instances<br>- The file server is designed to handle storage operations, peer-to-peer communication, and encryption key management.The </code>FileServerOps<code> struct is a collection of options for the file server, including its ID, root storage location, path transformation function, transport protocol, bootstrap nodes, and encryption key.The </code>FileServer<code> struct represents the file server itself, incorporating the server's options, a store for the server's files, a quit channel, a lock for managing peer access, a map of peers, and a channel for handling not found errors.The </code>NewFileServer<code> function is used to create a new instance of FileServer<br>- It takes a </code>FileServerOps<code> struct as an argument and returns a new </code>FileServer<code> instance.This file is part of the main package and leverages the </code>p2p` package for peer-to-peer communication capabilities<br>- It is central to the functioning of the Distributed File Storage System and plays a critical role in the overall codebase architecture.Please refer to the individual function documentation for more specific details on the implementation and use of each function.</td>
-				</tr>
-				<tr style='border-bottom: 1px solid #eee;'>
-					<td style='padding: 8px;'><b><a href='https://github.com/zenvisjr/decentralized-secure-content-aware-file-storage-system/blob/master/store_test.go'>store_test.go</a></b></td>
-					<td style='padding: 8px;'>- Store_test.go conducts unit tests for validating the functionalities of a storage system<br>- It checks the transformation of file paths using a cryptographic function, file storage, and retrieval operations<br>- Furthermore, it ensures the system correctly handles file deletions, and the storage system can be properly cleared without errors.</td>
-				</tr>
-				<tr style='border-bottom: 1px solid #eee;'>
-					<td style='padding: 8px;'><b><a href='https://github.com/zenvisjr/decentralized-secure-content-aware-file-storage-system/blob/master/crypto_test.go'>crypto_test.go</a></b></td>
-					<td style='padding: 8px;'>- Crypto_test.go serves as a crucial testing unit within the codebase, focusing on validating the encryption and decryption functions<br>- It creates a mock scenario to simulate the process of copying and encrypting a large file, followed by its decryption, ensuring the integrity and effectiveness of these procedures.</td>
+					<td style='padding: 8px;'>
+					- Defines the <code>FileServer</code> struct to manage storage, peer connections, and network operations.<br>
+					- Configures server options using <code>FileServerOps</code> (ID, root path, transport, encryption key, peers, etc.).<br>
+					- Handles peer-to-peer communication using the custom <code>p2p</code> package.<br>
+					- Processes file-related operations: store, retrieve, and delete.<br>
+					- Manages file signature mapping and not-found response tracking.<br>
+					- Initializes the file server via <code>NewFileServer()</code> constructor.<br>
+					</td>
 				</tr>
 				<tr style='border-bottom: 1px solid #eee;'>
 					<td style='padding: 8px;'><b><a href='https://github.com/zenvisjr/decentralized-secure-content-aware-file-storage-system/blob/master/Makefile'>Makefile</a></b></td>
-					<td style='padding: 8px;'>- Makefile serves as a script for automating the build, run, and test procedures of the Go codebase<br>- It compiles the Go source code into a binary file, executes the binary, and runs unit tests across all packages in the project, providing a streamlined development workflow.</td>
+					<td style='padding: 8px;'>Automates build, run, and test procedures for the Go codebase.</td>
 				</tr>
 				<tr style='border-bottom: 1px solid #eee;'>
 					<td style='padding: 8px;'><b><a href='https://github.com/zenvisjr/decentralized-secure-content-aware-file-storage-system/blob/master/startServerConfig.json'>startServerConfig.json</a></b></td>
-					<td style='padding: 8px;'>- StartServerConfig.json establishes the initial configuration for the network of servers, specifying the unique port, connected peers, and corresponding key path for each server<br>- Its role within the entire codebase is to dictate the fundamental topology and security parameters of the server network.</td>
+					<td style='padding: 8px;'>Establishes the initial configuration for the network of servers, specifying the unique port, connected peers, and corresponding key path for each server.</td>
 				</tr>
 				<tr style='border-bottom: 1px solid #eee;'>
 					<td style='padding: 8px;'><b><a href='https://github.com/zenvisjr/decentralized-secure-content-aware-file-storage-system/blob/master/store.go'>store.go</a></b></td>
-					<td style='padding: 8px;'>- Store.go serves as the main storage module, facilitating file operations such as reading, writing, and deleting files on disk<br>- It organizes files using a SHA1 hashing mechanism and supports storing and retrieving file signatures<br>- Additionally, it provides a means to check file existence, clear the root directory, and handle decrypted file writing.</td>
+					<td style='padding: 8px;'>
+					- Handles local file storage operations including write, read, and delete.<br>
+					- Uses SHA-1 hash of the file name for consistent disk path generation.<br>
+					- Preserves original file extensions during storage and retrieval.<br>
+					- Manages RSA signature storage and validation alongside file content.<br>
+					- Provides functions to check file existence and clear the storage directory.<br>
+					- Supports writing decrypted files to disk after retrieval from peers.<br>
 				</tr>
 				<tr style='border-bottom: 1px solid #eee;'>
 					<td style='padding: 8px;'><b><a href='https://github.com/zenvisjr/decentralized-secure-content-aware-file-storage-system/blob/master/main.go'>main.go</a></b></td>
-					<td style='padding: 8px;'>- Main.go serves as the central orchestrator for a distributed file storage system<br>- It manages key operations such as key pair generation, server setup, file handling, and command execution<br>- The file facilitates interactions with multiple servers, ensuring data storage and retrieval while maintaining a clear root across the system.</td>
+					<td style='padding: 8px;'>- Acts as the entry point of the application.<br>
+					- Parses command-line arguments to execute operations like <code>store</code>, <code>get</code>, <code>delete</code>, and <code>deletelocal</code>.<br>
+					- Generates RSA key pairs if not already present.<br>
+					- Loads configuration from <code>startServerConfig.json</code> to set up server and peers.<br>
+					- Initializes and starts the <code>FileServer</code> instance.<br>
+					- Facilitates interaction with the distributed system via CLI.<br>
+				</td>
 				</tr>
 				<tr style='border-bottom: 1px solid #eee;'>
 					<td style='padding: 8px;'><b><a href='https://github.com/zenvisjr/decentralized-secure-content-aware-file-storage-system/blob/master/go.sum'>go.sum</a></b></td>
-					<td style='padding: 8px;'>- Go.sum manages the specific versions of dependencies used in the project<br>- It ensures that the project consistently uses the same versions of dependencies across various environments<br>- This helps in maintaining stability, reproducibility, and integrity in the application by preventing unnoticed updates or changes in the dependencies.</td>
+					<td style='padding: 8px;'>It records the exact versions of dependencies used in the project and ensures that the project consistently uses the same versions of dependencies across various environments.</td>
 				</tr>
 			</table>
 		</blockquote>
@@ -188,11 +196,13 @@ The **Decentralized Secure Content-Aware File Storage System** is a peer-to-peer
 			</thead>
 				<tr style='border-bottom: 1px solid #eee;'>
 					<td style='padding: 8px;'><b><a href='https://github.com/zenvisjr/decentralized-secure-content-aware-file-storage-system/blob/master/p2p/handshake.go'>handshake.go</a></b></td>
-					<td style='padding: 8px;'>- The <code>handshake.go</code> file in the <code>p2p</code> directory manages peer-to-peer network handshakes in the application<br>- It performs the exchange of network node IDs, and also the exchange of public keys for securing communication<br>- The file defines functions for both simple and defensive handshakes, handling potential issues such as self-connections and handshake timeouts.</td>
+					<td style='padding: 8px;'>- Implements the handshake protocol between peers during connection establishment.<br>
+					- Exchanges node IDs and public RSA keys to verify identity and enable secure communication.<br>
+					- Prevents self-connections and duplicate connections using defensive checks.</td>
 				</tr>
 				<tr style='border-bottom: 1px solid #eee;'>
 					<td style='padding: 8px;'><b><a href='https://github.com/zenvisjr/decentralized-secure-content-aware-file-storage-system/blob/master/p2p/message.go'>message.go</a></b></td>
-					<td style='padding: 8px;'>- In the broader context of the project, <code>message.go</code> defines communication structures within the peer-to-peer network module<br>- It establishes data types for Incoming messages and streams, facilitating the exchange of arbitrary data between peers<br>- The flexibility of the RPC structure allows for varied data payloads and supports both regular and streaming data transmission modes.</td>
+					<td style='padding: 8px;'>- Defines communication structures within the peer-to-peer network module<br>- It establishes data types for Incoming messages and streams, facilitating the exchange of arbitrary data between peers<br>- The flexibility of the RPC structure allows for varied data payloads and supports both regular and streaming data transmission modes.</td>
 				</tr>
 				<tr style='border-bottom: 1px solid #eee;'>
 					<td style='padding: 8px;'><b><a href='https://github.com/zenvisjr/decentralized-secure-content-aware-file-storage-system/blob/master/p2p/transport.go'>transport.go</a></b></td>
@@ -200,12 +210,13 @@ The **Decentralized Secure Content-Aware File Storage System** is a peer-to-peer
 				</tr>
 				<tr style='border-bottom: 1px solid #eee;'>
 					<td style='padding: 8px;'><b><a href='https://github.com/zenvisjr/decentralized-secure-content-aware-file-storage-system/blob/master/p2p/tcp_transport.go'>tcp_transport.go</a></b></td>
-					<td style='padding: 8px;'>- TCPTransport, located at p2p/tcp_transport.go, establishes and manages TCP connections for a peer-to-peer network<br>- It handles incoming messages, manages peer connections, and maintains a hash map of files<br>- The TCPPeer struct represents the remote node over a TCP connection<br>- These components together facilitate efficient network communication and data transfers.</td>
-				</tr>
-				<tr style='border-bottom: 1px solid #eee;'>
-					<td style='padding: 8px;'><b><a href='https://github.com/zenvisjr/decentralized-secure-content-aware-file-storage-system/blob/master/p2p/tcp_transport_test.go'>tcp_transport_test.go</a></b></td>
-					<td style='padding: 8px;'>- TCPTransportTest validates the functionality of the TCP Transport protocol in a peer-to-peer(P2P) system<br>- The test ensures that a TCP connection can be successfully established, data can be sent, and the connection can be closed without errors<br>- Its a crucial component of the project, ensuring robust networking in the P2P system.</td>
-				</tr>
+					<td style='padding: 8px;'>- Implements the TCP-based transport layer for peer communication.<br>
+					- Defines the <code>TCPTransport</code> struct to listen for and manage TCP connections.<br>
+					- Handles incoming connections, performs handshake, and manages active peers.<br>
+					- Defines the <code>TCPPeer</code> struct representing a connected remote peer.<br>
+					- Supports message sending, peer removal, and stream handling over TCP sockets.<br>
+					- Integrates with the <code>handshake.go</code> and <code>message.go</code> components for secure messaging.<br>
+				</td>
 				<tr style='border-bottom: 1px solid #eee;'>
 					<td style='padding: 8px;'><b><a href='https://github.com/zenvisjr/decentralized-secure-content-aware-file-storage-system/blob/master/p2p/encoding.go'>encoding.go</a></b></td>
 					<td style='padding: 8px;'>- Encoding.go in the p2p package provides interfaces and implementations for decoding incoming data in the peer-to-peer network communication<br>- It includes a default decoder and a GOB decoder, each offering a method to read from a stream and decode incoming RPC messages, handling both standard data and stream data.</td>
@@ -221,78 +232,264 @@ The **Decentralized Secure Content-Aware File Storage System** is a peer-to-peer
 
 ---
 
+Thanks! Based on your updated `Makefile` and `startServerConfig.json` structure, here's the revised and complete **🚀 Getting Started** section with everything integrated:
+
+---
+
 ## 🚀 Getting Started
 
 ### 🌟 Prerequisites
 
-This project requires the following dependencies:
+Make sure you have the following installed:
 
-- **Programming Language:** Go
-- **Package Manager:** Go modules
+* **Go** (v1.20 or higher) — [Install Go](https://golang.org/dl/)
+* **Git** — to clone the repository
 
-### ⚡ Installation
+---
 
-Build decentralized-secure-content-aware-file-storage-system from the source and intsall dependencies:
+### ⚡ Installation & Setup
+
+Follow these steps to set up and run the system locally:
 
 1. **Clone the repository:**
 
-    ```sh
-    ❯ git clone https://github.com/zenvisjr/decentralized-secure-content-aware-file-storage-system
-    ```
+   ```sh
+   git clone https://github.com/zenvisjr/decentralized-secure-content-aware-file-storage-system
+   ```
 
-2. **Navigate to the project directory:**
+2. **Navigate to the project repository:**
 
-    ```sh
-    ❯ cd decentralized-secure-content-aware-file-storage-system
-    ```
+   ```sh
+   cd decentralized-secure-content-aware-file-storage-system
+   ```
 
-3. **Install the dependencies:**
+2. **Build the project:**
 
-<!-- SHIELDS BADGE CURRENTLY DISABLED -->
-	<!-- [![go modules][go modules-shield]][go modules-link] -->
-	<!-- REFERENCE LINKS -->
-	<!-- [go modules-shield]: https://img.shields.io/badge/Go-00ADD8.svg?style={badge_style}&logo=go&logoColor=white -->
-	<!-- [go modules-link]: https://golang.org/ -->
+   Use the provided `Makefile`:
 
-	**Using [go modules](https://golang.org/):**
+   ```sh
+   make build
+   ```
 
-	```sh
-	❯ go build
-	```
+   This will compile the binary to `./endgame/yeahbaby`.
 
-### 🔆 Usage
+3. **Define peer configuration:**
 
-Run the project with:
+   Modify or create a `startServerConfig.json` file with the structure below:
 
-**Using [go modules](https://golang.org/):**
+   ```json
+   [
+     {
+       "port": ":3000",
+       "peers": ["", ":8000"],
+       "key_path": "3000.key"
+     },
+     {
+       "port": ":4000",
+       "peers": [":3000"],
+       "key_path": "4000.key"
+     },
+     {
+       "port": ":8000",
+       "peers": [],
+       "key_path": "8000.key"
+     },
+     {
+       "port": ":5000",
+       "peers": [":3000", ":4000", ":8000"],
+       "key_path": "5000.key"
+     }
+   ]
+   ```
+
+   Each server entry defines:
+
+   * Listening port
+   * Peers it connects to
+   * Path to its session key file (otherwise auto-generated each time if not stored)
+
+4. **Run the server:**
+
+   ```sh
+   make run
+   ```
+
+5. **Run all tests:**
+
+   ```sh
+   make test
+   ```
+
+---
+
+
+Here’s a complete **🔆 Usage** section to showcase the CLI commands supported by your system, with clear examples and expected behavior:
+
+---
+
+## 🔆 Usage
+
+After running the server (`make run`), you can use the following CLI operations to interact with the decentralized file storage system:
+
+### 📥 Store a File
+
+Encrypts and stores the specified file on the local node and broadcasts it to peers.
+
 ```sh
-go run {entrypoint}
+> store <file_path>
 ```
 
-### 🌠 Testing
+**Example:**
 
-Decentralized-secure-content-aware-file-storage-system uses the {__test_framework__} test framework. Run the test suite with:
-
-**Using [go modules](https://golang.org/):**
 ```sh
-go test ./...
+> store samples/image.png
 ```
 
 ---
 
-## 🌻 Roadmap
+### 📤 Retrieve a File
 
-- [X] **`Task 1`**: <strike>Implement feature one.</strike>
-- [ ] **`Task 2`**: Implement feature two.
-- [ ] **`Task 3`**: Implement feature three.
+Retrieves the file from the local store or fetches it from peers if not found locally. Decrypts and restores the original file with preserved extension.
+
+```sh
+> get <file_key>
+```
+
+**Example:**
+
+```sh
+> get image.png
+```
 
 ---
+
+### ❌ Delete from All Peers
+
+Deletes the file from the local node and all connected peers. Also removes its associated digital signature.
+
+```sh
+> delete <file_key>
+```
+
+---
+
+### 🗑️ Delete Locally Only
+
+Removes the file and its signature only from the current node without affecting peers.
+
+```sh
+> deletelocal <file_key>
+```
+
+---
+
+### 🚪 Quit the Server Loop
+Exits the infinite input loop and gracefully shuts down the server.
+
+```sh
+> quit
+```
+
+
+---
+
+Great. Let's start with the **complete architecture flow** — explained step-by-step with clear module interactions:
+
+---
+
+## 🏗️ System Architecture Overview
+
+### 🔄 Overall Flow – How Components Interact
+
+```plaintext
+               ┌──────────────────────┐
+               │  startServerConfig   │
+               │  (JSON config file)  │
+               └─────────┬────────────┘
+                         │
+                         ▼
+               ┌──────────────────────┐
+               │   makeServer.go      │
+               │ - Initializes        │
+               │   FileServer via     │
+               │   NewFileServer()    │
+               └─────────┬────────────┘
+                         │
+                         ▼
+               ┌──────────────────────┐
+               │     main.go          │
+               │ - Parses config      │
+               │ - Starts server      │
+               │ - Accepts CLI input  │
+               └─────────┬────────────┘
+                         │
+                         ▼
+               ┌────────────────────────────┐
+               │        server.go           │
+               │ - Defines FileServer logic │
+               │ - Handles file operations  │
+               │ - Manages peer map         │
+               └─────────┬────────────┬─────┘
+                         │            │
+                         ▼            ▼
+         ┌────────────────────┐   ┌────────────────────┐
+         │     store.go       │   │     crypto.go       │
+         │ - Local storage    │   │ - AES encryption    │
+         │ - SHA1 pathing     │   │ - RSA signature     │
+         └────────┬───────────┘   └────────┬────────────┘
+                  │                        │
+                  ▼                        ▼
+        ┌─────────────────────┐   ┌─────────────────────────┐
+        │     p2p package     │   │   File Signature Map     │
+        │ - TCP transport     │   │ - In-memory tracking     │
+        │ - Handshake auth    │   │   of signatures per file │
+        │ - Peer messaging    │   └─────────────────────────┘
+        └────────┬────────────┘
+                 ▼
+      ┌──────────────────────────┐
+      │      message.go          │
+      │ - Defines RPC structure  │
+      │ - Supports stream flags  │
+      └──────────────────────────┘
+```
+
+
+---
+
+## 🧩 Architecture Flow
+
+**main.go** is the entry point:
+
+* Calls `EnsureKeyPair()` → checks/generates `private.pem` and `public.pem`
+* Calls `completeServerSetup()` → loads all servers from `startServerConfig.json`
+
+**completeServerSetup()** (in makeServer.go):
+
+* Loads JSON configs for each server (port, peer list, key path)
+* For each config:
+
+  * Calls `makeServer()`
+  * Inside `makeServer()`:
+
+    * Initializes TCP transport using `p2p.NewTCPTransport()`
+    * Creates a `FileServer` using `NewFileServer()` with:
+
+      * Port
+      * Peer addresses
+      * AES encryption key
+      * Path transformation logic
+    * Assigns the file server’s `OnPeer()` handler to the TCP transport
+    * Starts the server via `server.Start()` (in a goroutine)
+* After starting the server, we execute `runCommandLoop()` to accept CLI input in a infinite loop until `quit` is entered.
+
+**Result:** All servers are initialized, their peers are connected via TCP, and ready to accept commands.
+
+---
+
+
 
 ## 🤝 Contributing
 
-- **💬 [Join the Discussions](https://github.com/zenvisjr/decentralized-secure-content-aware-file-storage-system/discussions)**: Share your insights, provide feedback, or ask questions.
-- **🐛 [Report Issues](https://github.com/zenvisjr/decentralized-secure-content-aware-file-storage-system/issues)**: Submit bugs found or log feature requests for the `decentralized-secure-content-aware-file-storage-system` project.
-- **💡 [Submit Pull Requests](https://github.com/zenvisjr/decentralized-secure-content-aware-file-storage-system/blob/main/CONTRIBUTING.md)**: Review open PRs, and submit your own PRs.
 
 <details closed>
 <summary>Contributing Guidelines</summary>
@@ -331,15 +528,16 @@ go test ./...
 
 ---
 
-## 📜 License
 
-Decentralized-secure-content-aware-file-storage-system is protected under the [LICENSE](https://choosealicense.com/licenses) License. For more details, refer to the [LICENSE](https://choosealicense.com/licenses/) file.
+## 👨‍💻 Author
+
+**Ayush Rai**  
+📧 Email: [ayushrai.cse@gmail.com](mailto:ayushrai.cse@gmail.com)
 
 ---
 
-## ✨ Acknowledgments
 
-- Credit `contributors`, `inspiration`, `references`, etc.
+
 
 <div align="right">
 
@@ -351,4 +549,3 @@ Decentralized-secure-content-aware-file-storage-system is protected under the [L
 [back-to-top]: https://img.shields.io/badge/-BACK_TO_TOP-151515?style=flat-square
 
 
----
