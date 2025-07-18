@@ -326,6 +326,8 @@ func (f *FileServer) Delete(key string) error {
 		if err := f.store.Delete(f.ID, key); err != nil {
 			return err
 		}
+		f.store.DeleteSignature(key)
+		fmt.Println("deleted signature from local disk")
 	}
 
 	fmt.Printf("[%s] will now delete files from all its peers\n", f.Transort.ListenAddr())
@@ -355,6 +357,7 @@ func (f *FileServer) DeleteLocal(key string) error {
 		if err != nil {
 			return err
 		}
+		f.store.DeleteSignature(key)
 	}
 	return nil
 }
@@ -559,7 +562,14 @@ func (f *FileServer) handleMessageStoreFile(from string, msg *MessageStoreFile) 
 	if err != nil {
 		return err
 	}
-	fmt.Println("Read")
+
+	//******while deleting files i was getting error, file is used by other process
+	//so i need to close the reader to free up the file
+	if closer, ok := reader.(io.Closer); ok {
+		defer closer.Close()
+	}
+	
+	// fmt.Println("Read")
 
 	// Read all encrypted data into buffer for signature verification
 	var encryptedData bytes.Buffer
@@ -600,8 +610,12 @@ func (f *FileServer) handleMessageDeleteFile(from string, msg *MessageDeleteFile
 	// fmt.Printf("Received delete message %+v from %s\n", msg, from)
 	if f.store.Has(msg.ID, msg.Key) {
 		fmt.Printf("deleteing [%s] file from peer [%s] \n", msg.Key, from)
-		return f.store.Delete(msg.ID, msg.Key)
+		if err := f.store.Delete(msg.ID, msg.Key); err != nil {
+			return err
+		}
 	}
+	f.store.DeleteSignature(msg.Key)
+	fmt.Println("deleted signature from peer", from)
 	return nil
 }
 

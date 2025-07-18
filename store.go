@@ -91,6 +91,11 @@ func(s *Store) GetSignature(key string) ([]byte, error) {
 	}
 	return sig, nil
 }
+
+func(s *Store) DeleteSignature(key string) {
+	delete(s.signatureMap, key)
+}
+
 // Checks whether the given key maps to an existing file on disk under the store’s directory.
 func (s *Store) Has(id string, key string) bool {
 
