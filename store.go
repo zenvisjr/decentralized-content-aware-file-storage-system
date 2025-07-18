@@ -55,13 +55,15 @@ type StoreOps struct {
 	//Root is the root folder containing all the folders/files of the system
 	Root              string
 	PathTransformFunc PathTransformFunc
-	//map to store hash of file -> key
-	HashMap map[string]string
+	
 }
 
 // Store represents a store.
 type Store struct {
 	StoreOps
+	//map to store hash of file -> key
+	HashMap map[string]string
+	signatureMap map[string][]byte
 }
 
 // NewStore creates a new store
@@ -72,15 +74,23 @@ func NewStore(ops StoreOps) *Store {
 	if len(ops.Root) == 0 {
 		ops.Root = defaultRoot
 	}
-	if ops.HashMap == nil {
-		ops.HashMap = make(map[string]string)
-	}
 	
 	return &Store{
 		StoreOps: ops,
+		HashMap: make(map[string]string),
+		signatureMap: make(map[string][]byte),
 	}
 }
-
+func(s *Store) SaveSignature(key string, sig []byte) {
+	s.signatureMap[key] = sig
+}
+func(s *Store) GetSignature(key string) ([]byte, error) {
+	sig, ok := s.signatureMap[key]
+	if !ok {
+		return nil, errors.New("signature not found")
+	}
+	return sig, nil
+}
 // Checks whether the given key maps to an existing file on disk under the store’s directory.
 func (s *Store) Has(id string, key string) bool {
 

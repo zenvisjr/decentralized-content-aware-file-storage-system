@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"encoding/binary"
 	"encoding/gob"
 	"fmt"
@@ -32,6 +31,7 @@ type FileServer struct {
 	peerLock     sync.Mutex
 	peers        map[string]p2p.Peer
 	notFoundChan chan struct{}
+
 	// incomingStreamChan chan p2p.Peer
 }
 
@@ -110,7 +110,6 @@ func (f *FileServer) Store(key string, r io.Reader) error {
 	}
 	fmt.Printf("Original file size stored to disk: %d bytes\n", size)
 
-
 	// } else {
 	// 	fmt.Println("File already exists with key", keyExist)
 	// }
@@ -125,25 +124,29 @@ func (f *FileServer) Store(key string, r io.Reader) error {
 	fileReader := bytes.NewReader(fileBuffer.Bytes())
 	teeReader := io.TeeReader(fileReader, &teeBuf)
 
-	fmt.Printf("Original file size before encryption: %d bytes\n", len(fileBuffer.Bytes()))
-	fmt.Println("Original file hash:", sha256.Sum256(fileBuffer.Bytes()))
+	// fmt.Printf("Original file size before encryption: %d bytes\n", len(fileBuffer.Bytes()))
+	// fmt.Println("Original file hash:", sha256.Sum256(fileBuffer.Bytes()))
 
-	n, err := copyEncrypt(&teeBuf, teeReader, f.EncKey)
+	_, err = copyEncrypt(&teeBuf, teeReader, f.EncKey)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Size returned by copyEncrypt: %d bytes\n", n)
-	fmt.Printf("Actual teeBuf size: %d bytes\n", len(teeBuf.Bytes()))
-	fmt.Printf("Encrypted data hash (IV + encrypted): %x\n", sha256.Sum256(teeBuf.Bytes()))
+	// fmt.Printf("Size returned by copyEncrypt: %d bytes\n", n)
+	// fmt.Printf("Actual teeBuf size: %d bytes\n", len(teeBuf.Bytes()))
+	// fmt.Printf("Encrypted data hash (IV + encrypted): %x\n", sha256.Sum256(teeBuf.Bytes()))
 
 	signature, err := signSignature(teeBuf.Bytes(), privKey) // fileBuffer already contains full file
 	if err != nil {
 		return err
 	}
+	//store the signature of encrypted file in the map
+	sigKey := hashKey(key) + getExtension(key)
+	f.store.SaveSignature(sigKey, signature)
+	// fmt.Printf("YOYOYO [%s] Signature stored in map for key [%s]", f.Transort.ListenAddr(), sigKey)
 
 	msg := Message{
 		Payload: MessageStoreFile{
-			Key:  hashKey(key) + getExtension(key),
+			Key:  sigKey,
 			Size: int64(len(teeBuf.Bytes())),
 			ID:   f.ID,
 			// Ext:  getExtension(key),
@@ -151,7 +154,7 @@ func (f *FileServer) Store(key string, r io.Reader) error {
 		},
 	}
 
-	fmt.Println("Broadcasting file to other peers")
+	fmt.Printf("Broadcasting file to other peers")
 	fmt.Printf("Message size: %d bytes\n", msg.Payload.(MessageStoreFile).Size)
 
 	if err := f.broadcast(&msg); err != nil {
@@ -244,14 +247,52 @@ func (f *FileServer) Get(key string) (io.Reader, string, error) {
 			// 	continue
 			// }
 
-			var fileSize int64
+			var (
+				fileSize int64
+				sigLen   int64
+			)
+
 			if err := binary.Read(streamPeer, binary.LittleEndian, &fileSize); err != nil {
 				fmt.Println("failed to read fileSize from stream, skipping peer")
 				continue
 			}
-			n, err := f.store.WriteDecrypted(f.ID, key, f.EncKey, io.LimitReader(streamPeer, fileSize))
+
+			if err := binary.Read(streamPeer, binary.LittleEndian, &sigLen); err != nil {
+				fmt.Println("failed to read sigLen from stream, skipping peer")
+				continue
+			}
+
+			signature := make([]byte, sigLen)
+			if _, err := io.ReadFull(streamPeer, signature); err != nil {
+				fmt.Println("failed to read signature from stream, skipping peer")
+				continue
+			}
+			fmt.Printf(" [%s] -> [%s]", msg.Payload.(MessageGetFile).Key, signature)
+
+			encData := make([]byte, fileSize)
+			if _, err := io.ReadFull(streamPeer, encData); err != nil {
+				fmt.Println("failed to read encrypted data from stream, skipping peer")
+				continue
+			}
+
+			peerAddr := streamPeer.RemoteAddr().String()
+			peerPublicKey, ok := p2p.GetPeerPublicKey(peerAddr)
+			if !ok {
+				fmt.Printf("Peer %s public key not found, skipping\n", peerAddr)
+				continue
+			}
+
+			if err := verifySignature(encData, signature, peerPublicKey); err != nil {
+				fmt.Println("failed to verify signature, skipping peer")
+				continue
+			}
+			fmt.Printf("Signature verified from peer %s\n", peerAddr)
+
+			encryptedReader := bytes.NewReader(encData)
+
+			n, err := f.store.WriteDecrypted(f.ID, key, f.EncKey, encryptedReader)
 			if err != nil {
-				fmt.Println("failed to write file to disk, skipping peer")
+				fmt.Println("failed to write file to disk after successful verification, skipping peer")
 				continue
 			}
 			fmt.Printf("[%s] received (%d) bytes from peer %s\n", f.Transort.ListenAddr(), n, streamPeer.RemoteAddr().String())
@@ -275,7 +316,6 @@ func (f *FileServer) Get(key string) (io.Reader, string, error) {
 
 	}
 	// return nil, "", nil
-
 }
 
 // Delete delets the file locally if its present according to key
@@ -401,7 +441,7 @@ func (f *FileServer) HandleMessage(from string, msg *Message) error {
 	case MessageDeleteFile:
 		return f.handleMessageDeleteFile(from, &v)
 	case MessageGetFileNotFound:
-		return f.handleMessageGetFileNotFound(from, &v)
+		return f.handleMessageGetFileNotFound()
 
 	}
 	return nil
@@ -448,11 +488,18 @@ func (f *FileServer) handleMessageGetFile(from string, msg *MessageGetFile) erro
 		return fmt.Errorf("peer %s could not be found in map", from)
 	}
 
+	signature, err := f.store.GetSignature(msg.Key)
+	if err != nil {
+		return fmt.Errorf("signature for file %s could not be found in map on peer [%s]", msg.Key, from)
+	}
+	fmt.Println("Signature for file in handleMessageGetFile", msg.Key, "is", signature)
 	// First send the "incomingStream" byte to the peer and then we can send
 	// the file size as an int64.
 
 	peer.Send([]byte{p2p.IncommingStream})
 	binary.Write(peer, binary.LittleEndian, fileSize)
+	binary.Write(peer, binary.LittleEndian, int64(len(signature)))
+	peer.Write(signature)
 
 	// fmt.Println("Received RPC", rpc)
 	// fmt.Println("RPC Payload", rpc.Payload[0])
@@ -519,8 +566,8 @@ func (f *FileServer) handleMessageStoreFile(from string, msg *MessageStoreFile) 
 	if _, err := io.Copy(&encryptedData, reader); err != nil {
 		return fmt.Errorf("failed to read encrypted data from disk: %w", err)
 	}
-	fmt.Println("Encrypted data length", len(encryptedData.Bytes()))
-	fmt.Printf("Encrypted data hash: %x\n", sha256.Sum256(encryptedData.Bytes()))
+	// fmt.Println("Encrypted data length", len(encryptedData.Bytes()))
+	// fmt.Printf("Encrypted data hash: %x\n", sha256.Sum256(encryptedData.Bytes()))
 	// var decryptedData bytes.Buffer
 	// if _, err := copyDecrypt(&decryptedData, reader, f.EncKey); err != nil {
 	// 	return fmt.Errorf("decryption failed: %w", err)
@@ -541,6 +588,8 @@ func (f *FileServer) handleMessageStoreFile(from string, msg *MessageStoreFile) 
 		return fmt.Errorf("signature verification failed: %w", err)
 	}
 
+	f.store.SaveSignature(msg.Key, msg.Signature)
+
 	fmt.Printf("Signature verified from peer %s\n", from)
 	// panic("not implemented")
 	peer.CloseStream()
@@ -556,7 +605,7 @@ func (f *FileServer) handleMessageDeleteFile(from string, msg *MessageDeleteFile
 	return nil
 }
 
-func (f *FileServer) handleMessageGetFileNotFound(from string, msg *MessageGetFileNotFound) error {
+func (f *FileServer) handleMessageGetFileNotFound() error {
 	// use a sync.Map or channel to track NACKs — see below for setup
 	f.notFoundChan <- struct{}{}
 	return nil

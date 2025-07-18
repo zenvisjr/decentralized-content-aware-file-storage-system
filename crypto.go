@@ -14,56 +14,7 @@ import (
 	"log"
 )
 
-// func ensureKeyPair() error {
-// 	if _, err := os.Stat("private.pem"); os.IsNotExist(err) {
-// 		// fmt.Println("No key pair found, generating...")
-// 		return generateKeyPair()
-// 	}
-// 	// fmt.Println("Key pair already exists.")
-// 	return nil
-// }
 
-// func generateKeyPair() error {
-// 	// fmt.Println("Generating key pair...")
-// 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	privFile, err := os.Create("private.pem")
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	defer privFile.Close()
-// 	if err := pem.Encode(privFile, &pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(privateKey)}); err != nil {
-// 		return err
-// 	}
-
-// 	pubFile, err := os.Create("public.pem")
-// 	if err != nil {
-// 		return err
-// 	}
-// 	defer pubFile.Close()
-// 	pubBytes, err := x509.MarshalPKIXPublicKey(&privateKey.PublicKey)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	if err := pem.Encode(pubFile, &pem.Block{Type: "PUBLIC KEY", Bytes: pubBytes}); err != nil {
-// 		return err
-// 	}
-
-// 	return nil
-// }
-
-// func LoadPublicKey() ([]byte, error ){
-// 	publicKey, err := os.ReadFile("public.pem")
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	return publicKey, nil
-
-// }
 
 // generateID generates a random ID
 func generateID() string {
@@ -183,6 +134,8 @@ func hashFileContent(r io.Reader) (string, int64, error) {
 	fmt.Println("hashed file", hashedFile)
 	return hex.EncodeToString(hashedFile), n, nil
 }
+
+
 
 func signSignature(data []byte, priv *rsa.PrivateKey) ([]byte, error) {
 	hash := sha256.Sum256(data)
