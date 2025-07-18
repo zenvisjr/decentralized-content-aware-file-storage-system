@@ -568,7 +568,7 @@ func (f *FileServer) handleMessageStoreFile(from string, msg *MessageStoreFile) 
 	if closer, ok := reader.(io.Closer); ok {
 		defer closer.Close()
 	}
-	
+
 	// fmt.Println("Read")
 
 	// Read all encrypted data into buffer for signature verification
@@ -608,6 +608,12 @@ func (f *FileServer) handleMessageStoreFile(from string, msg *MessageStoreFile) 
 
 func (f *FileServer) handleMessageDeleteFile(from string, msg *MessageDeleteFile) error {
 	// fmt.Printf("Received delete message %+v from %s\n", msg, from)
+	_, ok := f.peers[from]
+	if !ok {
+		log.Printf("Rejecting delete from unknown peer %s", from)
+		return fmt.Errorf("unauthorized delete request from unknown peer")
+	}
+
 	if f.store.Has(msg.ID, msg.Key) {
 		fmt.Printf("deleteing [%s] file from peer [%s] \n", msg.Key, from)
 		if err := f.store.Delete(msg.ID, msg.Key); err != nil {
