@@ -39,3 +39,15 @@ type MessageDeleteAck struct {
 	From string
 	Err  string
 }
+
+type MessageDuplicateCheck struct {
+	Key string
+	ID  string
+}
+
+type MessageDuplicateResponse struct {
+    Key   string
+    ID    string
+    HasIt bool
+    From  string
+}

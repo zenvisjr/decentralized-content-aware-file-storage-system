@@ -38,6 +38,7 @@ type FileServer struct {
 	storeAckChan  chan MessageStoreAck
 	deleteAckChan chan MessageDeleteAck
 	storedFiles   map[string]bool
+	duplicationResponseChan chan string
 	// incomingStreamChan chan p2p.Peer
 }
 
@@ -77,6 +78,7 @@ func NewFileServer(ops FileServerOps) (*FileServer, error) {
 		storeAckChan:  make(chan MessageStoreAck, 100),
 		deleteAckChan: make(chan MessageDeleteAck, 100),
 		storedFiles:   make(map[string]bool),
+		duplicationResponseChan: make(chan string, 100),
 	}, nil
 }
 
@@ -93,6 +95,7 @@ func (f *FileServer) Store(key string, r io.Reader) error {
 		err          error
 		fd           *os.File
 		fileLocation string
+		msg          Message
 	)
 
 	if ok := f.store.Has(f.ID, key); ok {
@@ -115,6 +118,50 @@ func (f *FileServer) Store(key string, r io.Reader) error {
 	f.auditLogger.Log("STORE", key, "LOCAL", "SUCCESS")
 
 ENCRYPT_AND_STREAM:
+
+	//check if the file is already stored in the network
+	msg = Message{
+		Payload: MessageDuplicateCheck{
+			Key: hashKey(key) + getExtension(key),
+			ID:  f.ID,
+		},
+	}
+	if err := f.broadcastDuplicateCheck(&msg); err != nil {
+		return err
+	}
+
+	// Wait 1 sec for all peers to reply
+	timeout := time.After(3 * time.Second)
+	peersWithFile := make(map[string]bool)
+
+	waiting := len(f.peers)
+	fmt.Println("Waiting for duplicate responses from", waiting, "peers")
+END:
+	for waiting > 0 {
+		// fmt.Printf("[%s] Waiting for duplicate responses from %d peers\n", f.Transort.ListenAddr(), waiting)
+		select {
+		case addr := <-f.duplicationResponseChan:
+			fmt.Printf("[%s] Received duplicate response from peer %s for file %s\n", f.Transort.ListenAddr(), addr, msg.Payload.(MessageDuplicateCheck).Key)
+			peersWithFile[addr] = true
+			waiting--
+		case <-timeout:
+			fmt.Printf("[%s] Timeout while waiting for duplicate responses\n", f.Transort.ListenAddr())
+			goto END
+		}
+	}
+	if len(peersWithFile) > 0 {
+		fmt.Printf("[%s] File %s already stored on %d peers\n", f.Transort.ListenAddr(), key, len(peersWithFile))
+		f.auditLogger.Log("STORE", key, "LOCAL", "ALREADY_STORED_ON_SOME_PEERS")
+	} else if len(peersWithFile) == len(f.peers) {
+		fmt.Printf("[%s] File %s stored on all peers\n", f.Transort.ListenAddr(), key)
+		f.auditLogger.Log("STORE", key, "LOCAL", "STORED_ON_ALL_PEERS")
+		return nil
+	} else {
+		fmt.Printf("[%s] File %s not stored on any peer\n", f.Transort.ListenAddr(), key)
+		f.auditLogger.Log("STORE", key, "LOCAL", "NOT_STORED_ON_ANY_PEER")
+	}
+
+
 
 	tempFile, err := os.CreateTemp("", "enc_temp_*.bin")
 	if err != nil {
@@ -176,7 +223,7 @@ ENCRYPT_AND_STREAM:
 	if err != nil {
 		return err
 	}
-	msg := Message{
+	msg = Message{
 		Payload: MessageStoreFile{
 			Key:  sigKey,
 			Size: int64(fStat.Size()),
@@ -232,7 +279,7 @@ ENCRYPT_AND_STREAM:
 	failures := make(map[string]string)
 	expectedAcks := len(f.peers)
 
-	timeout := time.After(2 * time.Second)
+	timeout = time.After(2 * time.Second)
 	timeoutErr := ""
 
 ackLoop:
@@ -288,7 +335,7 @@ func (f *FileServer) Get(key string) (io.Reader, string, error) {
 		// fmt.Printf("[%s] File location %s\n", f.Transort.ListenAddr(), fileLocation)
 
 		// if rc, ok := r.(io.ReadCloser); ok {
-			defer r.Close() // ✅ this ensures file is closed after use
+		defer r.Close() // ✅ this ensures file is closed after use
 		// }
 
 		return r, fileLocation, nil
@@ -638,9 +685,55 @@ func (f *FileServer) HandleMessage(from string, msg *Message) error {
 		return f.handleMessageStoreAck(from, &v)
 	case MessageDeleteAck:
 		return f.handleMessageDeleteAck(from, &v)
+	case MessageDuplicateCheck:
+		return f.handleMessageDuplicateCheck(from, &v)
+	case MessageDuplicateResponse:
+		return f.handleMessageDuplicateResponse(from, &v)
 
 	}
 	return nil
+}
+
+func (f *FileServer) handleMessageDuplicateResponse(from string, msg *MessageDuplicateResponse) error {
+	// fmt.Println("executing handleMessageDuplicateResponse")
+	fmt.Printf("[%s] Received duplicate response from peer %s for file %s\n", f.Transort.ListenAddr(), from, msg.Key)
+	if !msg.HasIt {
+        f.duplicationResponseChan <- msg.From
+		// fmt.Printf("DEBUG: Successfully sent to duplicationResponseChan: %s\n", msg.From)
+
+    }
+    return nil
+}
+
+
+func (f *FileServer) handleMessageDuplicateCheck(from string, msg *MessageDuplicateCheck) error {
+	// fmt.Println("executing handleMessageDuplicateCheck")
+	fmt.Printf("[%s] Checking for duplicate file %s on peer %s\n", f.Transort.ListenAddr(), msg.Key, from)
+	var HasFile bool = false
+	if f.store.Has(msg.ID, msg.Key) {
+		HasFile = true
+		fmt.Printf("[%s] File %s already exists on peer %s\n", f.Transort.ListenAddr(), msg.Key, from)
+	}
+
+	response := Message{
+		Payload: MessageDuplicateResponse{
+			Key:   msg.Key,
+			ID:    msg.ID,
+			HasIt: HasFile,
+			From:  f.Transort.ListenAddr(),
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := gob.NewEncoder(&buf).Encode(response); err != nil {
+		fmt.Println("encoding error", err)
+		return err
+	}
+
+	// send back as direct message (not stream)
+	p := f.peers[from]
+	p.Send([]byte{p2p.IncommingMessage})
+	return p.Send(buf.Bytes())
 }
 
 func (f *FileServer) handleMessageDeleteAck(from string, msg *MessageDeleteAck) error {
@@ -706,7 +799,7 @@ func (f *FileServer) handleMessageGetFile(from string, msg *MessageGetFile) erro
 	// r, ok := rd.(io.ReadCloser)
 	// if ok {
 	// 	// fmt.Println("Closing reader")
-		defer rd.Close()
+	defer rd.Close()
 	// }
 
 	signature, err := f.store.GetSignature(msg.Key)
@@ -931,6 +1024,25 @@ func (f *FileServer) broadcast(msg *Message) error {
 		// p.Send(full)
 
 		if err := p.Send(full); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (f *FileServer) broadcastDuplicateCheck(msg *Message) error {
+	buf := new(bytes.Buffer)
+	if err := gob.NewEncoder(buf).Encode(msg); err != nil {
+		return err
+	}
+
+	for _, p := range f.peers {
+		fmt.Printf("[%s] Broadcasting duplicate check to peer %s\n", f.Transort.ListenAddr(), p.RemoteAddr().String())
+		p.Send([]byte{p2p.IncommingMessage})
+		// full := append([]byte{p2p.IncommingMessage}, buf.Bytes()...)
+		// p.Send(full)
+
+		if err := p.Send(buf.Bytes()); err != nil {
 			return err
 		}
 	}

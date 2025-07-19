@@ -141,6 +141,8 @@ func registerAll() {
 	gob.Register(MessageGetFileNotFound{})
 	gob.Register(MessageStoreAck{})
 	gob.Register(MessageDeleteAck{})
+	gob.Register(MessageDuplicateCheck{})
+	gob.Register(MessageDuplicateResponse{})
 }
 
 func runCommandLoop(fs *FileServer) {
