@@ -60,6 +60,7 @@ func makeServer(configFile *ServerConfig) *FileServer {
 
 	newAddr := strings.ReplaceAll(configFile.Port, ":", "_")
 	fileServerOps := FileServerOps{
+		ID:                "",
 		RootStorage:       newAddr + "_gyattt",
 		PathTransformFunc: CryptoPathTransformFunc,
 		Transort:          tcpTransport,

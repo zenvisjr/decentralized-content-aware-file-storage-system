@@ -38,7 +38,7 @@ func main() {
 	s1 := servers[":3000"]
 	s4 := servers[":8000"]
 
-	time.Sleep(1 * time.Second)
+	time.Sleep(500 * time.Millisecond)
 
 	s3.store.ClearRoot()
 	s2.store.ClearRoot()

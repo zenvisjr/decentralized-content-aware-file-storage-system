@@ -21,3 +21,6 @@
 *.dat
 *.key
 *.pem
+*.log
+
+audit

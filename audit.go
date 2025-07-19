@@ -13,8 +13,11 @@ type AuditLogger struct {
 	logFilePath string
 }
 
-func NewAuditLogger(logFilePath string) (*AuditLogger, error) {
-	fd, err := os.OpenFile(logFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+func NewAuditLogger(logFilePath, logFileName string) (*AuditLogger, error) {
+	if err := os.MkdirAll(logFilePath, 0755); err != nil {
+		return nil, err
+	}
+	fd, err := os.OpenFile(logFilePath+"/"+logFileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return nil, err
 	}

@@ -50,7 +50,9 @@ func NewFileServer(ops FileServerOps) (*FileServer, error) {
 		ops.ID = generateID()
 	}
 
-	audit, err := NewAuditLogger("audit.log")
+	auditFileLocation := "audit/" + ops.RootStorage + "/" + ops.ID
+	logFileName := ops.ID + ".log"
+	audit, err := NewAuditLogger(auditFileLocation, logFileName)
 	if err != nil {
 		log.Fatalf("Audit logger initialization failed: %v", err)
 	}
@@ -67,39 +69,6 @@ func NewFileServer(ops FileServerOps) (*FileServer, error) {
 	}, nil
 }
 
-type Message struct {
-	// From    string
-	Payload any
-}
-
-type MessageStoreFile struct {
-	Key string
-	ID  string
-	// Ext  string
-	Size      int64
-	Signature []byte
-}
-
-type MessageGetFile struct {
-	Key string
-	ID  string
-}
-
-type MessageDeleteFile struct {
-	Key string
-	ID  string
-}
-
-type MessageGetFileNotFound struct {
-	Key string
-	ID  string
-}
-
-type MessageStoreAck struct {
-	Key  string
-	From string
-	Err  error
-}
 
 func (f *FileServer) Store(key string, r io.Reader) error {
 
