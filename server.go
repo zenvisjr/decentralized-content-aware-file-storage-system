@@ -339,10 +339,15 @@ func (f *FileServer) Get(key string) (io.Reader, string, error) {
 				f.auditLogger.Log("GET", key, peerAddr, "FAIL_READ_SIGNATURE")
 				continue
 			}
-			fmt.Printf(" [%s] -> [%s]", msg.Payload.(MessageGetFile).Key, signature)
+			// fmt.Printf(" [%s] -> [%s]", msg.Payload.(MessageGetFile).Key, signature)
+			
+			// encData := make([]byte, fileSize)
+			encData := io.LimitReader(streamPeer, fileSize)
+			hasher := sha256.New()
+			tee := io.TeeReader(encData, hasher)
 
-			encData := make([]byte, fileSize)
-			if _, err := io.ReadFull(streamPeer, encData); err != nil {
+			var encryptedBuf bytes.Buffer
+			if _, err := io.Copy(&encryptedBuf, tee); err != nil {
 				fmt.Printf("[%s] Failed to read encrypted data from peer %s, skipping...\n", f.Transort.ListenAddr(), peerAddr)
 				f.auditLogger.Log("GET", key, peerAddr, "FAIL_READ_ENCRYPTED_DATA")
 				continue
@@ -356,7 +361,8 @@ func (f *FileServer) Get(key string) (io.Reader, string, error) {
 				continue
 			}
 
-			if err := verifySignature(encData, signature, peerPublicKey); err != nil {
+			digest := hasher.Sum(nil)
+			if err := verifySignature(digest, signature, peerPublicKey); err != nil {
 				fmt.Printf("[%s] Signature verification FAILED from peer %s\n", f.Transort.ListenAddr(), peerAddr)
 				f.auditLogger.Log("GET", key, peerAddr, "FAIL_SIGNATURE_VERIFICATION")
 				continue
@@ -364,7 +370,7 @@ func (f *FileServer) Get(key string) (io.Reader, string, error) {
 			fmt.Printf("[%s] Signature verification PASSED from peer %s\n", f.Transort.ListenAddr(), peerAddr)
 			f.auditLogger.Log("GET", key, peerAddr, "SIGNATURE_VERIFICATION_SUCCESS")
 
-			encryptedReader := bytes.NewReader(encData)
+			encryptedReader := bytes.NewReader(encryptedBuf.Bytes())
 
 			n, err := f.store.WriteDecrypted(f.ID, key, f.EncKey, encryptedReader)
 			if err != nil {
@@ -604,6 +610,17 @@ func (f *FileServer) handleMessageStoreAck(from string, msg *MessageStoreAck) er
 
 func (f *FileServer) handleMessageGetFile(from string, msg *MessageGetFile) error {
 	// fmt.Println("executing handleMessageGetFile")
+
+	peer, ok := f.peers[from]
+	// fmt.Println("YOOOOOOOOOOOOOOOOOO-peer", peer.LocalAddr())
+	// fmt.Println("YOOOOOOOOOOOOOOOOOO-peer", peer.RemoteAddr())
+	// fmt.Println("YOOOOOOOOOOOOOOOOOO-from", from)
+	if !ok {
+		f.auditLogger.Log("GET", msg.Key, from, "FAIL_PEER_NOT_FOUND")
+		return fmt.Errorf("peer %s could not be found in map", from)
+	}
+
+
 	if !f.store.Has(msg.ID, msg.Key) {
 		fmt.Printf("[%s] need to serve file (%s) to peer %s but it does not exist on the network", f.Transort.ListenAddr(), msg.Key, from)
 		f.auditLogger.Log("GET", msg.Key, from, "FILE_NOT_FOUND")
@@ -629,6 +646,8 @@ func (f *FileServer) handleMessageGetFile(from string, msg *MessageGetFile) erro
 
 	}
 
+
+
 	fmt.Printf("[%s] Serving file [%s] to peer [%s]\n", f.Transort.ListenAddr(), msg.Key, from)
 	f.auditLogger.Log("GET_REQ", msg.Key, from, "FOUND")
 
@@ -644,14 +663,7 @@ func (f *FileServer) handleMessageGetFile(from string, msg *MessageGetFile) erro
 		defer r.Close()
 	}
 
-	peer, ok := f.peers[from]
-	// fmt.Println("YOOOOOOOOOOOOOOOOOO-peer", peer.LocalAddr())
-	// fmt.Println("YOOOOOOOOOOOOOOOOOO-peer", peer.RemoteAddr())
-	// fmt.Println("YOOOOOOOOOOOOOOOOOO-from", from)
-	if !ok {
-		f.auditLogger.Log("GET", msg.Key, from, "FAIL_PEER_NOT_FOUND")
-		return fmt.Errorf("peer %s could not be found in map", from)
-	}
+
 
 	signature, err := f.store.GetSignature(msg.Key)
 	if err != nil {
