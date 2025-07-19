@@ -116,7 +116,7 @@ func (s *Store) Has(id string, key string) bool {
 }
 
 // Reads the file from disk and returns the reader
-func (s *Store) Read(id string, key string) (int64, io.Reader, error, string) {
+func (s *Store) Read(id string, key string) (int64, *os.File, error, string) {
 
 	//we dont need to read the file in buffer as file can be very large and
 	//it can take time copying it in buffer so we returned the reader directl
@@ -195,7 +195,7 @@ func (s *Store) openFileForWriting(id, key string) (*os.File, error) {
 	// return os.Create(fullPathWithRoot + ext)
 }
 
-func (s *Store) readStream(id string, key string) (int64, io.ReadCloser, error, string) {
+func (s *Store) readStream(id string, key string) (int64, *os.File, error, string) {
 	ext := getExtension(key)
 	key = removeExtension(key)
 	// fmt.Println("Key in read", key)

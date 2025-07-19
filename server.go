@@ -37,6 +37,7 @@ type FileServer struct {
 	auditLogger   *AuditLogger
 	storeAckChan  chan MessageStoreAck
 	deleteAckChan chan MessageDeleteAck
+	storedFiles   map[string]bool
 	// incomingStreamChan chan p2p.Peer
 }
 
@@ -75,6 +76,7 @@ func NewFileServer(ops FileServerOps) (*FileServer, error) {
 		auditLogger:   audit,
 		storeAckChan:  make(chan MessageStoreAck, 100),
 		deleteAckChan: make(chan MessageDeleteAck, 100),
+		storedFiles:   make(map[string]bool),
 	}, nil
 }
 
@@ -86,8 +88,25 @@ func (f *FileServer) Store(key string, r io.Reader) error {
 	fmt.Printf("[%s] Starting Store operation for key: %s\n", f.Transort.ListenAddr(), key)
 	f.auditLogger.Log("STORE", key, "START", "Initiating store operation")
 
+	var (
+		size         int64
+		err          error
+		fd           *os.File
+		fileLocation string
+	)
+
+	if ok := f.store.Has(f.ID, key); ok {
+		f.auditLogger.Log("STORE", key, "LOCAL", "ALREADY_STORED")
+		_, fd, err, fileLocation = f.store.Read(f.ID, key)
+		if err != nil {
+			f.auditLogger.Log("GET", key, "LOCAL", "FAIL_READ")
+			return err
+		}
+		fmt.Printf("[%s] File %s already stored locally at location [%s]\n", f.Transort.ListenAddr(), key, fileLocation)
+		goto ENCRYPT_AND_STREAM
+	}
 	fmt.Printf("[%s] Storing file to disk\n", f.Transort.ListenAddr())
-	size, err, fd := f.store.Write(f.ID, key, r)
+	size, err, fd = f.store.Write(f.ID, key, r)
 	if err != nil {
 		f.auditLogger.Log("STORE", key, "LOCAL", "FAILED")
 		return err
@@ -95,14 +114,7 @@ func (f *FileServer) Store(key string, r io.Reader) error {
 	fmt.Printf("[%s] File stored locally: %d bytes\n", f.Transort.ListenAddr(), size)
 	f.auditLogger.Log("STORE", key, "LOCAL", "SUCCESS")
 
-	var (
-	// fileBuffer bytes.Buffer
-
-	// tee = io.TeeReader(r, tempFile)
-	// Step 1: Store original reader `r` to disk and simultaneously buffer for encryption
-	// fReader, fWriter = io.Pipe()
-	// tee = io.TeeReader(r, fWriter)
-	)
+ENCRYPT_AND_STREAM:
 
 	tempFile, err := os.CreateTemp("", "enc_temp_*.bin")
 	if err != nil {
@@ -275,9 +287,9 @@ func (f *FileServer) Get(key string) (io.Reader, string, error) {
 		}
 		// fmt.Printf("[%s] File location %s\n", f.Transort.ListenAddr(), fileLocation)
 
-		if rc, ok := r.(io.ReadCloser); ok {
-			defer rc.Close() // ✅ this ensures file is closed after use
-		}
+		// if rc, ok := r.(io.ReadCloser); ok {
+			defer r.Close() // ✅ this ensures file is closed after use
+		// }
 
 		return r, fileLocation, nil
 	}
@@ -486,7 +498,7 @@ func (f *FileServer) Delete(key string) error {
 	expectedAcks := len(f.peers)
 	successCount := 0
 	failures := make(map[string]string)
-	timeout := time.After(2 * time.Second)
+	timeout := time.After(5 * time.Second)
 	timeoutErr := ""
 ackLoop:
 	for expectedAcks > 0 {
@@ -691,11 +703,11 @@ func (f *FileServer) handleMessageGetFile(from string, msg *MessageGetFile) erro
 		return err
 	}
 
-	r, ok := rd.(io.ReadCloser)
-	if ok {
-		// fmt.Println("Closing reader")
-		defer r.Close()
-	}
+	// r, ok := rd.(io.ReadCloser)
+	// if ok {
+	// 	// fmt.Println("Closing reader")
+		defer rd.Close()
+	// }
 
 	signature, err := f.store.GetSignature(msg.Key)
 	if err != nil {
@@ -764,27 +776,6 @@ func (f *FileServer) handleMessageStoreFile(from string, msg *MessageStoreFile) 
 
 	// panic("not implemented")
 	fmt.Printf("[%s] Written (%d) bytes to disk on peer %s\n", f.Transort.ListenAddr(), n, from)
-
-	// _, reader, err, _ = f.store.Read(msg.ID, msg.Key)
-	// if err != nil {
-	// 	f.auditLogger.Log("STORE", msg.Key, from, "FAIL_READ_DISK")
-	// 	return err
-	// }
-
-	//******while deleting files i was getting error, file is used by other process
-	//so i need to close the reader to free up the file
-	// if closer, ok := reader.(io.Closer); ok {
-	// 	defer closer.Close()
-	// }
-
-	// fmt.Println("Read")
-
-	// Read all encrypted data into buffer for signature verification
-	// var encryptedData bytes.Buffer
-	// if _, err = io.Copy(&encryptedData, reader); err != nil {
-	// 	f.auditLogger.Log("STORE", msg.Key, from, "FAIL_ENCRYPTED_DATA_BUFFER_READ")
-	// 	return fmt.Errorf("failed to read encrypted data from disk: %w", err)
-	// }
 
 	// Step 4: Get public key and verify
 	peerPublicKey, ok := p2p.GetPeerPublicKey(from)
