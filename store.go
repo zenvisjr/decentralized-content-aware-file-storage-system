@@ -125,7 +125,7 @@ func (s *Store) Read(id string, key string) (int64, io.Reader, error, string) {
 }
 
 // Writes the file to disk
-func (s *Store) Write(id, key string, w io.Reader) (int64, error) {
+func (s *Store) Write(id, key string, w io.Reader) (int64, error, *os.File) {
 	// fmt.Println("executing write")
 	// panic("not implemented")
 	return s.writeStream(id, key, w)
@@ -223,11 +223,11 @@ func (s *Store) readStream(id string, key string) (int64, io.ReadCloser, error, 
 
 }
 
-func (s *Store) writeStream(id, key string, r io.Reader) (int64, error) {
+func (s *Store) writeStream(id, key string, r io.Reader) (int64, error, *os.File) {
 
 	fd, err := s.openFileForWriting(id, key)
 	if err != nil {
-		return 0, err
+		return 0, err, nil
 	}
 	// defer fd.Close()
 	// fmt.Println("File created")
@@ -236,14 +236,14 @@ func (s *Store) writeStream(id, key string, r io.Reader) (int64, error) {
 	//remember our data is in the buf as we already copied it
 	n, err := io.Copy(fd, r)
 	if err != nil {
-		return 0, err
+		return 0, err, nil
 	}
 	// fmt.Println("Data written to file")
 
 	//logging the written bytes
 	log.Printf("Written (%d) bytes to disk\n", n)
 	// panic("not implemented")
-	return n, nil
+	return n, nil, fd
 }
 
 func (s *Store) writeDecryptedStream(id, key string, encKey []byte, r io.Reader) (int, error) {

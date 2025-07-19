@@ -25,7 +25,7 @@ func TestStoreFile(t *testing.T) {
 	for i := 0; i < 1; i++ {
 		key := fmt.Sprintf("watashinosoulsociety_%d", i)
 		data := "My name is zenvis"
-		_, err := s.Write(id, key, strings.NewReader(data))
+		_, err, _ := s.Write(id, key, strings.NewReader(data))
 		assert.NoError(t, err)
 
 		exist := s.Has(id, key)

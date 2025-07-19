@@ -86,28 +86,8 @@ func (f *FileServer) Store(key string, r io.Reader) error {
 	fmt.Printf("[%s] Starting Store operation for key: %s\n", f.Transort.ListenAddr(), key)
 	f.auditLogger.Log("STORE", key, "START", "Initiating store operation")
 
-	var (
-		fileBuffer bytes.Buffer
-
-		tee = io.TeeReader(r, &fileBuffer)
-		// Step 1: Store original reader `r` to disk and simultaneously buffer for encryption
-		// fReader, fWriter = io.Pipe()
-		// tee = io.TeeReader(r, fWriter)
-	)
-	// defer func() {
-	// 	defer fWriter.Close()
-	// 	defer fReader.Close()
-	// }()
-	// fileHash, size, err := hashFileContent(fileBuffer)
-	// if err != nil {
-	// 	return err
-	// }
-
-	// if keyExist, ok := f.store.HashMap[fileHash]; !ok {
-	// f.store.HashMap[fileHash] = key
-
 	fmt.Printf("[%s] Storing file to disk\n", f.Transort.ListenAddr())
-	size, err := f.store.Write(f.ID, key, tee)
+	size, err, fd := f.store.Write(f.ID, key, r)
 	if err != nil {
 		f.auditLogger.Log("STORE", key, "LOCAL", "FAILED")
 		return err
@@ -115,9 +95,25 @@ func (f *FileServer) Store(key string, r io.Reader) error {
 	fmt.Printf("[%s] File stored locally: %d bytes\n", f.Transort.ListenAddr(), size)
 	f.auditLogger.Log("STORE", key, "LOCAL", "SUCCESS")
 
-	// } else {
-	// 	fmt.Println("File already exists with key", keyExist)
-	// }
+	var (
+	// fileBuffer bytes.Buffer
+
+	// tee = io.TeeReader(r, tempFile)
+	// Step 1: Store original reader `r` to disk and simultaneously buffer for encryption
+	// fReader, fWriter = io.Pipe()
+	// tee = io.TeeReader(r, fWriter)
+	)
+
+	tempFile, err := os.CreateTemp("", "enc_temp_*.bin")
+	if err != nil {
+		fmt.Printf("[%s] Failed to create temp file locally to store encrypted file\n", f.Transort.ListenAddr())
+		f.auditLogger.Log("STORE", key, "LOCAL", "FAIL_CREATE_TEMP_FILE")
+		return err
+	}
+	defer func() {
+		tempFile.Close()
+		os.Remove(tempFile.Name())
+	}()
 
 	privKey, err := p2p.LoadPrivateKey()
 	if err != nil {
@@ -126,18 +122,19 @@ func (f *FileServer) Store(key string, r io.Reader) error {
 	}
 
 	var (
-		// Now read from fileBuffer (convert to reader)
-		fileReader   = bytes.NewReader(fileBuffer.Bytes())
-		encryptedBuf bytes.Buffer
-		hasher       = sha256.New()
-		multiWriter  = io.MultiWriter(&encryptedBuf, hasher)
+		// fileReader   = bytes.NewReader(fileBuffer.Bytes())
+		// encryptedBuf bytes.Buffer
+		hasher      = sha256.New()
+		multiWriter = io.MultiWriter(tempFile, hasher)
 	)
 
 	// fmt.Printf("Original file size before encryption: %d bytes\n", len(fileBuffer.Bytes()))
 	// fmt.Println("Original file hash:", sha256.Sum256(fileBuffer.Bytes()))
 	fmt.Printf("[%s] Encrypting file...\n", f.Transort.ListenAddr())
 	f.auditLogger.Log("STORE", key, "ENCRYPT", "START")
-	_, err = copyEncrypt(multiWriter, fileReader, f.EncKey)
+
+	fd.Seek(0, io.SeekStart) // Rewind before re-reading
+	_, err = copyEncrypt(multiWriter, fd, f.EncKey)
 	if err != nil {
 		f.auditLogger.Log("STORE", key, "ENCRYPT", "FAILED")
 		return err
@@ -163,11 +160,14 @@ func (f *FileServer) Store(key string, r io.Reader) error {
 	fmt.Printf("[%s] Signature generated and saved\n", f.Transort.ListenAddr())
 	f.auditLogger.Log("STORE", key, "SIGN", "SUCCESS")
 	// fmt.Printf("YOYOYO [%s] Signature stored in map for key [%s]", f.Transort.ListenAddr(), sigKey)
-
+	fStat, err := os.Stat(tempFile.Name())
+	if err != nil {
+		return err
+	}
 	msg := Message{
 		Payload: MessageStoreFile{
 			Key:  sigKey,
-			Size: int64(len(encryptedBuf.Bytes())),
+			Size: int64(fStat.Size()),
 			ID:   f.ID,
 			// Ext:  getExtension(key),
 			Signature: signature,
@@ -190,14 +190,21 @@ func (f *FileServer) Store(key string, r io.Reader) error {
 	}
 
 	mw := io.MultiWriter(peers...)
+
+	_, err = tempFile.Seek(0, io.SeekStart)
+	if err != nil {
+		f.auditLogger.Log("STORE", key, "ENCRYPT", "FAILED")
+
+		return err
+	}
 	fmt.Printf("[%s] Streaming encrypted file to %d peers...\n", f.Transort.ListenAddr(), len(f.peers))
 	f.auditLogger.Log("STORE", key, "STREAM", "START")
 	mw.Write([]byte{p2p.IncommingStream})
 	// Create a fresh reader from the original file data for streaming
 	// Stream the encrypted data (IV + encrypted data) to peers
-	encryptedReader := bytes.NewReader(encryptedBuf.Bytes())
+	// encryptedReader := bytes.NewReader(tempFile)
 
-	nw, err := io.Copy(mw, encryptedReader)
+	nw, err := io.Copy(mw, tempFile)
 	if err != nil {
 		f.auditLogger.Log("STORE", key, "STREAM", "FAILED")
 		return err
@@ -747,7 +754,7 @@ func (f *FileServer) handleMessageStoreFile(from string, msg *MessageStoreFile) 
 	hasher := sha256.New()
 	lr := io.TeeReader(io.LimitReader(peer, msg.Size), hasher)
 
-	n, err = f.store.Write(msg.ID, msg.Key, lr)
+	n, err, _ = f.store.Write(msg.ID, msg.Key, lr)
 
 	// panic("not implemented")
 	if err != nil {
