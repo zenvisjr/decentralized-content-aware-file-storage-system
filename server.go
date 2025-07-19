@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"os"
 	"sync"
 	"time"
 
@@ -28,14 +29,14 @@ type FileServerOps struct {
 // FileServer represents a file server.
 type FileServer struct {
 	FileServerOps
-	store        *Store
-	quitch       chan struct{}
-	peerLock     sync.Mutex
-	peers        map[string]p2p.Peer
-	notFoundChan chan struct{}
-	auditLogger  *AuditLogger
-	storeAckChan      chan MessageStoreAck
-	deleteAckChan      chan MessageDeleteAck
+	store         *Store
+	quitch        chan struct{}
+	peerLock      sync.Mutex
+	peers         map[string]p2p.Peer
+	notFoundChan  chan struct{}
+	auditLogger   *AuditLogger
+	storeAckChan  chan MessageStoreAck
+	deleteAckChan chan MessageDeleteAck
 	// incomingStreamChan chan p2p.Peer
 }
 
@@ -72,11 +73,10 @@ func NewFileServer(ops FileServerOps) (*FileServer, error) {
 		peers:         make(map[string]p2p.Peer),
 		notFoundChan:  make(chan struct{}, 100),
 		auditLogger:   audit,
-		storeAckChan:       make(chan MessageStoreAck, 100),
-		deleteAckChan:       make(chan MessageDeleteAck, 100),
+		storeAckChan:  make(chan MessageStoreAck, 100),
+		deleteAckChan: make(chan MessageDeleteAck, 100),
 	}, nil
 }
-
 
 func (f *FileServer) Store(key string, r io.Reader) error {
 
@@ -88,8 +88,16 @@ func (f *FileServer) Store(key string, r io.Reader) error {
 
 	var (
 		fileBuffer bytes.Buffer
-		tee        = io.TeeReader(r, &fileBuffer)
+
+		tee = io.TeeReader(r, &fileBuffer)
+		// Step 1: Store original reader `r` to disk and simultaneously buffer for encryption
+		// fReader, fWriter = io.Pipe()
+		// tee = io.TeeReader(r, fWriter)
 	)
+	// defer func() {
+	// 	defer fWriter.Close()
+	// 	defer fReader.Close()
+	// }()
 	// fileHash, size, err := hashFileContent(fileBuffer)
 	// if err != nil {
 	// 	return err
@@ -118,14 +126,12 @@ func (f *FileServer) Store(key string, r io.Reader) error {
 	}
 
 	var (
-		// Now read from fileBuffer (convert to reader) 
-		fileReader = bytes.NewReader(fileBuffer.Bytes())
+		// Now read from fileBuffer (convert to reader)
+		fileReader   = bytes.NewReader(fileBuffer.Bytes())
 		encryptedBuf bytes.Buffer
 		hasher       = sha256.New()
 		multiWriter  = io.MultiWriter(&encryptedBuf, hasher)
 	)
-
-
 
 	// fmt.Printf("Original file size before encryption: %d bytes\n", len(fileBuffer.Bytes()))
 	// fmt.Println("Original file hash:", sha256.Sum256(fileBuffer.Bytes()))
@@ -315,6 +321,18 @@ func (f *FileServer) Get(key string) (io.Reader, string, error) {
 			// 	continue
 			// }
 
+			//we will stream the encrypted file to a temp file
+			tempEncFile, err := os.CreateTemp("", "enc_tmp_*.bin")
+			if err != nil {
+				fmt.Printf("[%s] Failed to create temp file, skipping...\n", f.Transort.ListenAddr())
+				f.auditLogger.Log("GET", key, "NETWORK", "FAIL_CREATE_TEMP_FILE")
+				continue
+			}
+			defer func() {
+				tempEncFile.Close()
+				os.Remove(tempEncFile.Name())
+			}()
+
 			var (
 				fileSize int64
 				sigLen   int64
@@ -340,20 +358,21 @@ func (f *FileServer) Get(key string) (io.Reader, string, error) {
 				continue
 			}
 			// fmt.Printf(" [%s] -> [%s]", msg.Payload.(MessageGetFile).Key, signature)
-			
+
 			// encData := make([]byte, fileSize)
 			encData := io.LimitReader(streamPeer, fileSize)
 			hasher := sha256.New()
-			tee := io.TeeReader(encData, hasher)
+			tee := io.TeeReader(encData, io.MultiWriter(tempEncFile, hasher))
 
-			var encryptedBuf bytes.Buffer
-			if _, err := io.Copy(&encryptedBuf, tee); err != nil {
-				fmt.Printf("[%s] Failed to read encrypted data from peer %s, skipping...\n", f.Transort.ListenAddr(), peerAddr)
+			// var encryptedBuf bytes.Buffer
+			if _, err := io.Copy(io.Discard, tee); err != nil {
+				fmt.Printf("[%s] Failed to copy encrypted data from peer %s, skipping...\n", f.Transort.ListenAddr(), peerAddr)
 				f.auditLogger.Log("GET", key, peerAddr, "FAIL_READ_ENCRYPTED_DATA")
+				//remove temp file
+				os.Remove(tempEncFile.Name())
 				continue
 			}
 
-			
 			peerPublicKey, ok := p2p.GetPeerPublicKey(peerAddr)
 			if !ok {
 				fmt.Printf("[%s] Peer %s public key not found, skipping...\n", f.Transort.ListenAddr(), peerAddr)
@@ -365,17 +384,28 @@ func (f *FileServer) Get(key string) (io.Reader, string, error) {
 			if err := verifySignature(digest, signature, peerPublicKey); err != nil {
 				fmt.Printf("[%s] Signature verification FAILED from peer %s\n", f.Transort.ListenAddr(), peerAddr)
 				f.auditLogger.Log("GET", key, peerAddr, "FAIL_SIGNATURE_VERIFICATION")
+				os.Remove(tempEncFile.Name())
 				continue
 			}
 			fmt.Printf("[%s] Signature verification PASSED from peer %s\n", f.Transort.ListenAddr(), peerAddr)
 			f.auditLogger.Log("GET", key, peerAddr, "SIGNATURE_VERIFICATION_SUCCESS")
 
-			encryptedReader := bytes.NewReader(encryptedBuf.Bytes())
+			// encryptedReader := bytes.NewReader(encryptedBuf.Bytes())
 
-			n, err := f.store.WriteDecrypted(f.ID, key, f.EncKey, encryptedReader)
+			// Step 1: Seek back to beginning of temp file
+			if _, err := tempEncFile.Seek(0, io.SeekStart); err != nil {
+				fmt.Printf("[%s] Failed to rewind temp encrypted file: %v\n", f.Transort.ListenAddr(), err)
+				f.auditLogger.Log("GET", key, peerAddr, "FAIL_REWIND_TEMP_FILE")
+				os.Remove(tempEncFile.Name())
+				continue
+			}
+
+			// Step 2: Use it as reader for decryption
+			n, err := f.store.WriteDecrypted(f.ID, key, f.EncKey, tempEncFile)
 			if err != nil {
 				fmt.Printf("[%s] Failed to write decrypted file to disk: %v\n", f.Transort.ListenAddr(), err)
 				f.auditLogger.Log("GET", key, peerAddr, "FAIL_WRITE_DECRYPTED_FILE")
+				os.Remove(tempEncFile.Name())
 				continue
 			}
 			fmt.Printf("[%s] Wrote %d decrypted bytes to disk from peer %s\n", f.Transort.ListenAddr(), n, peerAddr)
@@ -415,7 +445,7 @@ func (f *FileServer) Delete(key string) error {
 
 	if f.store.Has(f.ID, key) {
 		fmt.Printf("[%s] have file [%s], deleting from local disk\n", f.Transort.ListenAddr(), key)
-		
+
 		if err := f.store.Delete(f.ID, key); err != nil {
 			f.auditLogger.Log("DELETE", key, "LOCAL", "FAIL_DELETE")
 			return err
@@ -451,7 +481,7 @@ func (f *FileServer) Delete(key string) error {
 	failures := make(map[string]string)
 	timeout := time.After(2 * time.Second)
 	timeoutErr := ""
-	ackLoop:
+ackLoop:
 	for expectedAcks > 0 {
 		select {
 		case ack := <-f.deleteAckChan:
@@ -620,7 +650,6 @@ func (f *FileServer) handleMessageGetFile(from string, msg *MessageGetFile) erro
 		return fmt.Errorf("peer %s could not be found in map", from)
 	}
 
-
 	if !f.store.Has(msg.ID, msg.Key) {
 		fmt.Printf("[%s] need to serve file (%s) to peer %s but it does not exist on the network", f.Transort.ListenAddr(), msg.Key, from)
 		f.auditLogger.Log("GET", msg.Key, from, "FILE_NOT_FOUND")
@@ -646,8 +675,6 @@ func (f *FileServer) handleMessageGetFile(from string, msg *MessageGetFile) erro
 
 	}
 
-
-
 	fmt.Printf("[%s] Serving file [%s] to peer [%s]\n", f.Transort.ListenAddr(), msg.Key, from)
 	f.auditLogger.Log("GET_REQ", msg.Key, from, "FOUND")
 
@@ -662,8 +689,6 @@ func (f *FileServer) handleMessageGetFile(from string, msg *MessageGetFile) erro
 		// fmt.Println("Closing reader")
 		defer r.Close()
 	}
-
-
 
 	signature, err := f.store.GetSignature(msg.Key)
 	if err != nil {
@@ -696,7 +721,7 @@ func (f *FileServer) handleMessageGetFile(from string, msg *MessageGetFile) erro
 	}
 	// f.incomingStreamChan <- peer
 	fmt.Printf("[%s] Sent (%d bytes) of file [%s] to peer [%s]\n", f.Transort.ListenAddr(), n, msg.Key, from)
-	f.auditLogger.Log("GET_REQ", msg.Key, from, "SUCCESS")	
+	f.auditLogger.Log("GET_REQ", msg.Key, from, "SUCCESS")
 	return nil
 
 }
@@ -705,8 +730,8 @@ func (f *FileServer) handleMessageStoreFile(from string, msg *MessageStoreFile) 
 	// panic("not implemented")
 	// fmt.Printf("Received data message %+v from %s\n", msg, from)
 	var (
-		err    error
-		n      int64
+		err error
+		n   int64
 		// reader io.Reader
 	)
 	err = nil //default error
@@ -845,7 +870,7 @@ func (f *FileServer) handleMessageDeleteFile(from string, msg *MessageDeleteFile
 	} else {
 		errStr = ""
 	}
-	
+
 	ack := Message{
 		Payload: MessageDeleteAck{
 			Key:  msg.Key,
