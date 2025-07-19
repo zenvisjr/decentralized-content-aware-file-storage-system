@@ -115,7 +115,7 @@ func copyDecrypt(dist io.Writer, src io.Reader, key []byte) (int, error) {
 		return 0, err
 	}
 
-	fmt.Println("block size", block.BlockSize())
+	// fmt.Println("block size", block.BlockSize())
 
 	stream := cipher.NewCTR(block, iv)
 

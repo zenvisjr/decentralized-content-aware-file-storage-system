@@ -13,11 +13,29 @@ type AuditLogger struct {
 	logFilePath string
 }
 
-func NewAuditLogger(logFilePath, logFileName string) (*AuditLogger, error) {
-	if err := os.MkdirAll(logFilePath, 0755); err != nil {
-		return nil, err
-	}
-	fd, err := os.OpenFile(logFilePath+"/"+logFileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+// func NewAuditLogger(logFilePath, logFileName string) (*AuditLogger, error) {
+// 	if err := os.MkdirAll(logFilePath, 0755); err != nil {
+// 		return nil, err
+// 	}
+// 	fd, err := os.OpenFile(logFilePath+"/"+logFileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+
+// 	startLog := fmt.Sprintf("[%s] LOGGING STARTED....\n", time.Now().Format(time.RFC3339))
+// 	fd.WriteString(startLog)
+// 	fd.WriteString("\n")
+
+// 	newAuditLogger := &AuditLogger{
+// 		logFile:     fd,
+// 		logFilePath: logFilePath,
+// 	}
+
+// 	return newAuditLogger, nil
+// }
+
+func simpleNewAuditLogger(logFileName string) (*AuditLogger, error) {
+	fd, err := os.OpenFile(logFileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return nil, err
 	}
@@ -28,11 +46,12 @@ func NewAuditLogger(logFilePath, logFileName string) (*AuditLogger, error) {
 
 	newAuditLogger := &AuditLogger{
 		logFile:     fd,
-		logFilePath: logFilePath,
+		logFilePath: logFileName,
 	}
 
 	return newAuditLogger, nil
 }
+
 
 func (a *AuditLogger) Log(op, filekey, peer, status string) {
 	a.mu.Lock()
