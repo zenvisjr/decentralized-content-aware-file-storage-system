@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/binary"
 	"encoding/gob"
 	"errors"
@@ -116,16 +117,21 @@ func (f *FileServer) Store(key string, r io.Reader) error {
 		return err
 	}
 
-	var teeBuf bytes.Buffer
-	// Now read from fileBuffer (convert to reader) and tee to teeBuf
-	fileReader := bytes.NewReader(fileBuffer.Bytes())
-	teeReader := io.TeeReader(fileReader, &teeBuf)
+	var (
+		// Now read from fileBuffer (convert to reader) 
+		fileReader = bytes.NewReader(fileBuffer.Bytes())
+		encryptedBuf bytes.Buffer
+		hasher       = sha256.New()
+		multiWriter  = io.MultiWriter(&encryptedBuf, hasher)
+	)
+
+
 
 	// fmt.Printf("Original file size before encryption: %d bytes\n", len(fileBuffer.Bytes()))
 	// fmt.Println("Original file hash:", sha256.Sum256(fileBuffer.Bytes()))
 	fmt.Printf("[%s] Encrypting file...\n", f.Transort.ListenAddr())
 	f.auditLogger.Log("STORE", key, "ENCRYPT", "START")
-	_, err = copyEncrypt(&teeBuf, teeReader, f.EncKey)
+	_, err = copyEncrypt(multiWriter, fileReader, f.EncKey)
 	if err != nil {
 		f.auditLogger.Log("STORE", key, "ENCRYPT", "FAILED")
 		return err
@@ -135,11 +141,14 @@ func (f *FileServer) Store(key string, r io.Reader) error {
 	// fmt.Printf("Actual teeBuf size: %d bytes\n", len(teeBuf.Bytes()))
 	// fmt.Printf("Encrypted data hash (IV + encrypted): %x\n", sha256.Sum256(teeBuf.Bytes()))
 
-	signature, err := signSignature(teeBuf.Bytes(), privKey) // fileBuffer already contains full file
+	digest := hasher.Sum(nil)
+	signature, err := signSignature(digest[:], privKey) // fileBuffer already contains full file
 	if err != nil {
 		f.auditLogger.Log("STORE", key, "SIGN", "FAILED")
 		return err
 	}
+
+	fmt.Printf("[%s] Signature generated: %x\n", f.Transort.ListenAddr(), signature)
 
 	//store the signature of encrypted file in the map
 	sigKey := hashKey(key) + getExtension(key)
@@ -152,7 +161,7 @@ func (f *FileServer) Store(key string, r io.Reader) error {
 	msg := Message{
 		Payload: MessageStoreFile{
 			Key:  sigKey,
-			Size: int64(len(teeBuf.Bytes())),
+			Size: int64(len(encryptedBuf.Bytes())),
 			ID:   f.ID,
 			// Ext:  getExtension(key),
 			Signature: signature,
@@ -180,7 +189,7 @@ func (f *FileServer) Store(key string, r io.Reader) error {
 	mw.Write([]byte{p2p.IncommingStream})
 	// Create a fresh reader from the original file data for streaming
 	// Stream the encrypted data (IV + encrypted data) to peers
-	encryptedReader := bytes.NewReader(teeBuf.Bytes())
+	encryptedReader := bytes.NewReader(encryptedBuf.Bytes())
 
 	nw, err := io.Copy(mw, encryptedReader)
 	if err != nil {
@@ -686,7 +695,7 @@ func (f *FileServer) handleMessageStoreFile(from string, msg *MessageStoreFile) 
 	var (
 		err    error
 		n      int64
-		reader io.Reader
+		// reader io.Reader
 	)
 	err = nil //default error
 	peer, ok := f.peers[from]
@@ -698,7 +707,8 @@ func (f *FileServer) handleMessageStoreFile(from string, msg *MessageStoreFile) 
 
 	fmt.Printf("[%s] Receiving encrypted file %s from peer %s (%d bytes)...\n", f.Transort.ListenAddr(), msg.Key, from, msg.Size)
 
-	lr := io.LimitReader(peer, msg.Size)
+	hasher := sha256.New()
+	lr := io.TeeReader(io.LimitReader(peer, msg.Size), hasher)
 
 	n, err = f.store.Write(msg.ID, msg.Key, lr)
 
@@ -707,31 +717,30 @@ func (f *FileServer) handleMessageStoreFile(from string, msg *MessageStoreFile) 
 		f.auditLogger.Log("STORE", msg.Key, from, "FAIL_WRITE_DISK")
 		return err
 	}
-	fmt.Printf("[%s] Write completed.\n", f.Transort.ListenAddr())
 
 	// panic("not implemented")
-	fmt.Printf("[%s] Written (%d) bytes to disk\n", f.Transort.ListenAddr(), n)
+	fmt.Printf("[%s] Written (%d) bytes to disk on peer %s\n", f.Transort.ListenAddr(), n, from)
 
-	_, reader, err, _ = f.store.Read(msg.ID, msg.Key)
-	if err != nil {
-		f.auditLogger.Log("STORE", msg.Key, from, "FAIL_READ_DISK")
-		return err
-	}
+	// _, reader, err, _ = f.store.Read(msg.ID, msg.Key)
+	// if err != nil {
+	// 	f.auditLogger.Log("STORE", msg.Key, from, "FAIL_READ_DISK")
+	// 	return err
+	// }
 
 	//******while deleting files i was getting error, file is used by other process
 	//so i need to close the reader to free up the file
-	if closer, ok := reader.(io.Closer); ok {
-		defer closer.Close()
-	}
+	// if closer, ok := reader.(io.Closer); ok {
+	// 	defer closer.Close()
+	// }
 
 	// fmt.Println("Read")
 
 	// Read all encrypted data into buffer for signature verification
-	var encryptedData bytes.Buffer
-	if _, err = io.Copy(&encryptedData, reader); err != nil {
-		f.auditLogger.Log("STORE", msg.Key, from, "FAIL_ENCRYPTED_DATA_BUFFER_READ")
-		return fmt.Errorf("failed to read encrypted data from disk: %w", err)
-	}
+	// var encryptedData bytes.Buffer
+	// if _, err = io.Copy(&encryptedData, reader); err != nil {
+	// 	f.auditLogger.Log("STORE", msg.Key, from, "FAIL_ENCRYPTED_DATA_BUFFER_READ")
+	// 	return fmt.Errorf("failed to read encrypted data from disk: %w", err)
+	// }
 
 	// Step 4: Get public key and verify
 	peerPublicKey, ok := p2p.GetPeerPublicKey(from)
@@ -744,7 +753,10 @@ func (f *FileServer) handleMessageStoreFile(from string, msg *MessageStoreFile) 
 		return err
 	}
 	// fmt.Println("Peer public key", peerPublicKey)
-	if err = verifySignature(encryptedData.Bytes(), msg.Signature, peerPublicKey); err != nil {
+	fmt.Printf("[%s] Signature : %x\n", f.Transort.ListenAddr(), msg.Signature)
+
+	digest := hasher.Sum(nil)
+	if err = verifySignature(digest, msg.Signature, peerPublicKey); err != nil {
 		fmt.Printf("[%s] Signature verification FAILED for file %s from peer %s: %v\n", f.Transort.ListenAddr(), msg.Key, from, err)
 		f.DeleteLocal(msg.Key)
 		f.auditLogger.Log("STORE", msg.Key, from, "FAIL_INVALID_SIGNATURE")
