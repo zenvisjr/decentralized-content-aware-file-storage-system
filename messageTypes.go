@@ -31,5 +31,11 @@ type MessageGetFileNotFound struct {
 type MessageStoreAck struct {
 	Key  string
 	From string
-	Err  error
+	Err  string
+}
+
+type MessageDeleteAck struct {
+	Key  string
+	From string
+	Err  string
 }

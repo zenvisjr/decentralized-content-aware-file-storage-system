@@ -33,7 +33,8 @@ type FileServer struct {
 	peers        map[string]p2p.Peer
 	notFoundChan chan struct{}
 	auditLogger  *AuditLogger
-	ackChan      chan MessageStoreAck
+	storeAckChan      chan MessageStoreAck
+	deleteAckChan      chan MessageDeleteAck
 	// incomingStreamChan chan p2p.Peer
 }
 
@@ -70,7 +71,8 @@ func NewFileServer(ops FileServerOps) (*FileServer, error) {
 		peers:         make(map[string]p2p.Peer),
 		notFoundChan:  make(chan struct{}, 100),
 		auditLogger:   audit,
-		ackChan:       make(chan MessageStoreAck, 100),
+		storeAckChan:       make(chan MessageStoreAck, 100),
+		deleteAckChan:       make(chan MessageDeleteAck, 100),
 	}, nil
 }
 
@@ -202,28 +204,28 @@ func (f *FileServer) Store(key string, r io.Reader) error {
 ackLoop:
 	for expectedAcks > 0 {
 		select {
-		case ack := <-f.ackChan:
-			fmt.Printf("[%s] Received ACK from peer %s\n", f.Transort.ListenAddr(), ack.From)
+		case ack := <-f.storeAckChan:
+			fmt.Printf("[%s] Received store ACK from peer %s\n", f.Transort.ListenAddr(), ack.From)
 			// fmt.Printf("[%s] Received error %s\n", f.Transort.ListenAddr(), ack.Err)
 			expectedAcks--
-			if ack.Err == nil {
+			if ack.Err == "" {
 				successCount++
 				// fmt.Println("successCount", successCount)
 			} else {
-				failures[ack.From] = ack.Err.Error()
+				failures[ack.From] = ack.Err
 			}
 		case <-timeout:
-			timeoutErr = fmt.Sprintf("[%s] Timeout waiting for ACKs from all peers.\n", f.Transort.ListenAddr())
+			timeoutErr = fmt.Sprintf("[%s] Timeout waiting for store ACKs from all peers.\n", f.Transort.ListenAddr())
 			break ackLoop
 		}
 	}
 	if len(timeoutErr) > 0 {
 		fmt.Println(timeoutErr)
-		f.auditLogger.Log("REPLICATE", key, "ALL", "FAIL: "+timeoutErr)
+		f.auditLogger.Log("REPLICATE", key, "ALL", "MIGHT_FAILED: "+timeoutErr)
 		return errors.New(timeoutErr)
 	} else if expectedAcks == 0 {
 		fmt.Printf("[%s] File %s successfully replicated to %d peers.\n", f.Transort.ListenAddr(), key, successCount)
-		f.auditLogger.Log("REPLICATE", key, "ALL", "SUCCESS")
+		f.auditLogger.Log("REPLICATE", key, "NETWORK", "SUCCESS")
 	} else {
 		fmt.Printf("[%s] Replication failed on %d peers:\n", f.Transort.ListenAddr(), len(failures))
 		for peer, reason := range failures {
@@ -392,17 +394,30 @@ func (f *FileServer) Get(key string) (io.Reader, string, error) {
 // Delete delets the file locally if its present according to key
 // and also from all the peers in the network
 func (f *FileServer) Delete(key string) error {
+
+	fmt.Printf("[%s] Starting Delete operation for key: %s\n", f.Transort.ListenAddr(), key)
+	f.auditLogger.Log("DELETE", key, "START", "Initiating delete operation")
+
 	if f.store.Has(f.ID, key) {
 		fmt.Printf("[%s] have file [%s], deleting from local disk\n", f.Transort.ListenAddr(), key)
+		
 		if err := f.store.Delete(f.ID, key); err != nil {
+			f.auditLogger.Log("DELETE", key, "LOCAL", "FAIL_DELETE")
 			return err
 		}
+		f.auditLogger.Log("DELETE", key, "LOCAL", "SUCCESS")
+
 		f.store.DeleteSignature(key)
-		fmt.Println("deleted signature from local disk")
+		f.auditLogger.Log("DELETE_SIGNATURE", key, "LOCAL", "SUCCESS")
+		fmt.Printf("[%s] Signature for file [%s] deleted from signature map\n", f.Transort.ListenAddr(), key)
+
+	} else {
+		fmt.Printf("[%s] File [%s] not found locally. Skipping local deletion.\n", f.Transort.ListenAddr(), key)
+		f.auditLogger.Log("DELETE", key, "LOCAL", "NOT_FOUND")
 	}
 
-	fmt.Printf("[%s] will now delete files from all its peers\n", f.Transort.ListenAddr())
-
+	fmt.Printf("[%s] Initiating delete broadcast for file [%s] to peers...\n", f.Transort.ListenAddr(), key)
+	f.auditLogger.Log("DELETE", key, "NETWORK", "START_BROADCAST")
 	msg := Message{
 		Payload: MessageDeleteFile{
 			Key: hashKey(key) + getExtension(key),
@@ -412,10 +427,47 @@ func (f *FileServer) Delete(key string) error {
 
 	err := f.broadcast(&msg)
 	if err != nil {
+		f.auditLogger.Log("DELETE", key, "NETWORK", "FAIL_BROADCAST")
 		return err
 	}
 
-	time.Sleep(500 * time.Millisecond)
+	expectedAcks := len(f.peers)
+	successCount := 0
+	failures := make(map[string]string)
+	timeout := time.After(2 * time.Second)
+	timeoutErr := ""
+	ackLoop:
+	for expectedAcks > 0 {
+		select {
+		case ack := <-f.deleteAckChan:
+			fmt.Printf("[%s] Received delete ACK from peer %s\n", f.Transort.ListenAddr(), ack.From)
+			// fmt.Printf("[%s] Received error %s\n", f.Transort.ListenAddr(), ack.Err)
+			expectedAcks--
+			if ack.Err == "" {
+				successCount++
+				// fmt.Println("successCount", successCount)
+			} else {
+				failures[ack.From] = ack.Err
+			}
+		case <-timeout:
+			timeoutErr = fmt.Sprintf("[%s] Timeout waiting for delete ACKs from all peers.\n", f.Transort.ListenAddr())
+			break ackLoop
+		}
+	}
+	if len(timeoutErr) > 0 {
+		fmt.Println(timeoutErr)
+		f.auditLogger.Log("DELETE", key, "ALL", "MIGHT_FAILED: "+timeoutErr)
+		return errors.New(timeoutErr)
+	} else if expectedAcks == 0 {
+		fmt.Printf("[%s] File %s successfully deleted from %d peers.\n", f.Transort.ListenAddr(), key, successCount)
+		f.auditLogger.Log("DELETE", key, "NETWORK", "SUCCESS")
+	} else {
+		fmt.Printf("[%s] Delete failed on %d peers:\n", f.Transort.ListenAddr(), len(failures))
+		for peer, reason := range failures {
+			fmt.Printf(" - %s: %s\n", peer, reason)
+			f.auditLogger.Log("DELETE", key, peer, "FAIL: "+reason)
+		}
+	}
 
 	return nil
 }
@@ -429,6 +481,8 @@ func (f *FileServer) DeleteLocal(key string) error {
 			return err
 		}
 		f.store.DeleteSignature(key)
+		f.auditLogger.Log("DELETE", key, "LOCAL", "SUCCESS")
+		fmt.Printf("[%s] deleted signature from local disk\n", f.Transort.ListenAddr())
 	}
 	return nil
 }
@@ -518,22 +572,31 @@ func (f *FileServer) HandleMessage(from string, msg *Message) error {
 		return f.handleMessageGetFileNotFound()
 	case MessageStoreAck:
 		return f.handleMessageStoreAck(from, &v)
+	case MessageDeleteAck:
+		return f.handleMessageDeleteAck(from, &v)
 
 	}
+	return nil
+}
+
+func (f *FileServer) handleMessageDeleteAck(from string, msg *MessageDeleteAck) error {
+	// fmt.Println("executing handleMessageDeleteAck")
+	fmt.Printf("Received DELETE ACK from %s for file %s\n", from, msg.Key)
+	f.deleteAckChan <- *msg
 	return nil
 }
 
 func (f *FileServer) handleMessageStoreAck(from string, msg *MessageStoreAck) error {
 	// fmt.Println("executing handleMessageStoreAck")
 	fmt.Printf("Received STORE ACK from %s for file %s\n", from, msg.Key)
-	f.ackChan <- *msg
+	f.storeAckChan <- *msg
 	return nil
 }
 
 func (f *FileServer) handleMessageGetFile(from string, msg *MessageGetFile) error {
 	// fmt.Println("executing handleMessageGetFile")
 	if !f.store.Has(msg.ID, msg.Key) {
-		fmt.Printf("[%s] Requested file [%s] from peer [%s] not found locally\n", f.Transort.ListenAddr(), msg.Key, from)
+		fmt.Printf("[%s] need to serve file (%s) to peer %s but it does not exist on the network", f.Transort.ListenAddr(), msg.Key, from)
 		f.auditLogger.Log("GET", msg.Key, from, "FILE_NOT_FOUND")
 		nack := Message{
 			Payload: MessageGetFileNotFound{
@@ -695,12 +758,18 @@ func (f *FileServer) handleMessageStoreFile(from string, msg *MessageStoreFile) 
 
 	peer.CloseStream()
 
+	var errStr string
+	if err != nil {
+		errStr = err.Error()
+	} else {
+		errStr = ""
+	}
 	//sending acknowledge to the sender
 	ack := Message{
 		Payload: MessageStoreAck{
 			Key:  msg.Key,
 			From: f.Transort.ListenAddr(),
-			Err:  err,
+			Err:  errStr,
 		},
 	}
 
@@ -724,20 +793,58 @@ func (f *FileServer) handleMessageStoreFile(from string, msg *MessageStoreFile) 
 
 func (f *FileServer) handleMessageDeleteFile(from string, msg *MessageDeleteFile) error {
 	// fmt.Printf("Received delete message %+v from %s\n", msg, from)
-	_, ok := f.peers[from]
+	err := error(nil)
+	peer, ok := f.peers[from]
 	if !ok {
-		log.Printf("Rejecting delete from unknown peer %s", from)
-		return fmt.Errorf("unauthorized delete request from unknown peer")
+		f.auditLogger.Log("DELETE", msg.Key, from, "FAIL_UNKNOWN_PEER")
+		log.Printf("[%s] Rejecting delete from unknown peer %s", f.Transort.ListenAddr(), from)
+		err = fmt.Errorf("unauthorized delete request from unknown peer")
+		return err
 	}
 
 	if f.store.Has(msg.ID, msg.Key) {
-		fmt.Printf("deleteing [%s] file from peer [%s] \n", msg.Key, from)
-		if err := f.store.Delete(msg.ID, msg.Key); err != nil {
-			return err
+		fmt.Printf("[%s] deleteing [%s] file from peer [%s] \n", f.Transort.ListenAddr(), msg.Key, from)
+		if err = f.store.Delete(msg.ID, msg.Key); err != nil {
+			f.auditLogger.Log("DELETE", msg.Key, from, "FAIL_DELETE")
 		}
 	}
+	f.auditLogger.Log("DELETE", msg.Key, from, "SUCCESS")
 	f.store.DeleteSignature(msg.Key)
-	fmt.Println("deleted signature from peer", from)
+	fmt.Printf("[%s] deleted signature from peer [%s] \n", f.Transort.ListenAddr(), from)
+	f.auditLogger.Log("DELETE_SIGNATURE", msg.Key, from, "SUCCESS")
+
+	//sending acknowledge to the sender
+
+	var errStr string
+	if err != nil {
+		errStr = err.Error()
+	} else {
+		errStr = ""
+	}
+	
+	ack := Message{
+		Payload: MessageDeleteAck{
+			Key:  msg.Key,
+			From: f.Transort.ListenAddr(),
+			Err:  errStr,
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := gob.NewEncoder(&buf).Encode(ack); err != nil {
+		fmt.Printf("Failed to encode ACK to peer %s: %v\n", from, err)
+		return nil // we return nil because file operation succeeded
+	}
+
+	if err := peer.Send([]byte{p2p.IncommingMessage}); err != nil {
+		fmt.Printf("Failed to send ACK prefix to peer %s: %v\n", from, err)
+		return nil
+	}
+	if err := peer.Send(buf.Bytes()); err != nil {
+		fmt.Printf("Failed to send ACK to peer %s: %v\n", from, err)
+		return nil
+	}
+
 	return nil
 }
 

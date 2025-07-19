@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/gob"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -69,8 +70,6 @@ func makeServer(configFile *ServerConfig) *FileServer {
 		// EncKey:            []byte("yokoso"),
 	}
 
-
-
 	// fmt.Println(fileServerOps)
 
 	newFileServer, _ := NewFileServer(fileServerOps)
@@ -133,6 +132,15 @@ func completeServerSetup() map[string]*FileServer {
 	}
 
 	return servers
+}
+
+func registerAll() {
+	gob.Register(MessageStoreFile{})
+	gob.Register(MessageGetFile{})
+	gob.Register(MessageDeleteFile{})
+	gob.Register(MessageGetFileNotFound{})
+	gob.Register(MessageStoreAck{})
+	gob.Register(MessageDeleteAck{})
 }
 
 func runCommandLoop(fs *FileServer) {

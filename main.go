@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/gob"
 	"fmt"
 	"log"
 	"os"
@@ -10,24 +9,15 @@ import (
 	"github.com/zenvisjr/distributed-file-storage-system/p2p"
 )
 
-
 func init() {
-	gob.Register(MessageStoreFile{}) 
-	gob.Register(MessageGetFile{})
-	gob.Register(MessageDeleteFile{})
-	gob.Register(MessageGetFileNotFound{})
-	gob.Register(MessageStoreAck{})
-
+	registerAll()
 }
-
 
 func main() {
 
 	if err := p2p.EnsureKeyPair(); err != nil {
 		log.Fatalf("Key generation failed: %v", err)
 	}
-
-
 
 	fmt.Println("LETS START COOKING")
 
@@ -46,7 +36,6 @@ func main() {
 	s4.store.ClearRoot()
 
 	runCommandLoop(s3)
-
 
 	key := "bill.pdf"
 	f, err := os.Open(key)
@@ -87,4 +76,3 @@ func main() {
 
 	// }
 }
-
