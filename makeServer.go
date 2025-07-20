@@ -100,6 +100,7 @@ func completeServerSetup() map[string]*FileServer {
 		time.Sleep(50 * time.Millisecond)
 	}
 
+
 	return servers
 }
 
@@ -208,12 +209,12 @@ func runCommandLoop(fs *FileServer) {
 			}
 		case "deleteremote":
 			if len(args) != 3 {
-				fmt.Println("Usage: deleteremote <filename> <session>")
+				fmt.Println("Usage: deleteremote <filename> <peer list separated by comma (ip:port)>")
 				continue
 			}
 			key := args[1]
-			session := args[2]
-			err := fs.DeleteRemote(key, session)
+			session := strings.Split(args[2], ",")
+			err := fs.DeleteRemote(key, session...)
 			if err != nil {
 				fmt.Println("Error deleting remote file:", err)
 			}

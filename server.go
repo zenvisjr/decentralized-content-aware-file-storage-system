@@ -770,25 +770,99 @@ func (f *FileServer) DeleteLocal(key string) error {
 	return nil
 }
 
-func (f *FileServer) DeleteRemote(key, session string) error {
-	ext := getExtension(key)
-	remotekey := hashKey(key)
-	if len(ext) != 0 {
-		remotekey += ext
+// func (f *FileServer) DeleteRemote(key, session string) error {
+// 	ext := getExtension(key)
+// 	remotekey := hashKey(key)
+// 	if len(ext) != 0 {
+// 		remotekey += ext
+// 	}
+// 	// fmt.Printf("[%s] file [%s] hash key [%s]\n", f.Transort.ListenAddr(), key, remotekey)
+// 	if f.store.Has(session, remotekey) {
+// 		fmt.Printf("[%s] have file [%s], deleting from local disk\n", f.Transort.ListenAddr(), key)
+// 		err := f.store.Delete(session, remotekey)
+// 		if err != nil {
+// 			return err
+// 		}
+// 		f.store.DeleteSignature(hashKey(key))
+// 		f.auditLogger.Log("DELETE", key, "LOCAL", "SUCCESS")
+// 		fmt.Printf("[%s] deleted signature from local disk\n", f.Transort.ListenAddr())
+// 	} else {
+// 		fmt.Printf("[%s] File [%s] not found locally. Skipping local deletion.\n", f.Transort.ListenAddr(), key)
+// 		f.auditLogger.Log("DELETE", key, "LOCAL", "NOT_FOUND")
+// 	}
+
+// 	return nil
+// }
+
+func (f *FileServer) DeleteRemote(key string, peer ...string) error {
+
+	fmt.Printf("[%s] Starting Delete operation for key: %s\n", f.Transort.ListenAddr(), key)
+	f.auditLogger.Log("DELETE", key, "START", "Initiating delete operation")
+
+	if len(peer) == 0 {
+		fmt.Printf("[%s] No peer provided\n", f.Transort.ListenAddr())
+		f.auditLogger.Log("DELETE", key, "NETWORK", "NO_PEER_PROVIDED")
+		return nil
 	}
-	// fmt.Printf("[%s] file [%s] hash key [%s]\n", f.Transort.ListenAddr(), key, remotekey)
-	if f.store.Has(session, remotekey) {
-		fmt.Printf("[%s] have file [%s], deleting from local disk\n", f.Transort.ListenAddr(), key)
-		err := f.store.Delete(session, remotekey)
-		if err != nil {
-			return err
+
+	// fmt.p
+
+	fmt.Printf("[%s] Initiating delete broadcast for file [%s] to peers...\n", f.Transort.ListenAddr(), key)
+	f.auditLogger.Log("DELETE", key, "NETWORK", "START_BROADCAST")
+	msg := Message{
+		Payload: MessageDeleteFile{
+			Key: hashKey(key) + getExtension(key),
+			ID:  f.ID,
+		},
+	}
+
+	// var peers []p2p.Peer
+	// for _, p := range peer {
+	// 	peer := f.peers[p]
+	// 	if peer == nil {
+	// 		return fmt.Errorf("peer %s not found", p)
+	// 	}
+	// 	peers = append(peers, peer)
+	// }
+	err := f.broadcastRemote(&msg, peer...)
+	if err != nil {
+		f.auditLogger.Log("DELETE", key, "NETWORK", "FAIL_BROADCAST")
+		return err
+	}
+
+	expectedAcks, totalPeers := len(peer), len(peer)
+	successCount := 0
+	failures := make(map[string]string)
+	timeout := time.After(5 * time.Second)
+	// timeoutErr := ""
+	// ackLoop:
+	for expectedAcks > 0 {
+		select {
+		case ack := <-f.deleteAckChan:
+			fmt.Printf("[%s] Received delete ACK from peer %s\n", f.Transort.ListenAddr(), ack.From)
+			// fmt.Printf("[%s] Received error %s\n", f.Transort.ListenAddr(), ack.Err)
+			expectedAcks--
+			if ack.Err == "" {
+				successCount++
+				fmt.Println("successCount", successCount)
+			} else {
+				failures[ack.From] = ack.Err
+			}
+		case <-timeout:
+			f.auditLogger.Log("DELETE", key, "ALL", "ACK_TIMEOUT")
+			fmt.Printf("[%s] Timeout waiting for delete ACKs from all peers.\n", f.Transort.ListenAddr())
+			return errors.New("timeout waiting for delete ACKs from all peers")
 		}
-		f.store.DeleteSignature(hashKey(key))
-		f.auditLogger.Log("DELETE", key, "LOCAL", "SUCCESS")
-		fmt.Printf("[%s] deleted signature from local disk\n", f.Transort.ListenAddr())
+	}
+	if successCount == totalPeers {
+		fmt.Printf("[%s] File %s successfully deleted from %d peers.\n", f.Transort.ListenAddr(), key, successCount)
+		f.auditLogger.Log("DELETE", key, "NETWORK", "SUCCESS")
 	} else {
-		fmt.Printf("[%s] File [%s] not found locally. Skipping local deletion.\n", f.Transort.ListenAddr(), key)
-		f.auditLogger.Log("DELETE", key, "LOCAL", "NOT_FOUND")
+		fmt.Printf("[%s] Delete failed on %d peers:\n", f.Transort.ListenAddr(), totalPeers-successCount)
+		for peer, reason := range failures {
+			fmt.Printf(" - %s: %s\n", peer, reason)
+			f.auditLogger.Log("DELETE", key, peer, "FAIL: "+reason)
+		}
 	}
 
 	return nil
@@ -1235,24 +1309,48 @@ func (f *FileServer) broadcast(msg *Message) error {
 	return nil
 }
 
-func (f *FileServer) broadcastDuplicateCheck(msg *Message) error {
+func (f *FileServer) broadcastRemote(msg *Message, listOfPeer ...string) error {
+
 	buf := new(bytes.Buffer)
 	if err := gob.NewEncoder(buf).Encode(msg); err != nil {
 		return err
 	}
 
-	for _, p := range f.peers {
-		fmt.Printf("[%s] Broadcasting duplicate check to peer %s\n", f.Transort.ListenAddr(), p.RemoteAddr().String())
-		p.Send([]byte{p2p.IncommingMessage})
-		// full := append([]byte{p2p.IncommingMessage}, buf.Bytes()...)
+	for _, p := range listOfPeer {
+		peer, ok := f.peers[p]
+		if !ok {
+			return fmt.Errorf("peer %s not found", p)
+		}
+		fmt.Printf("[%s] Broadcasting message to peer %s\n", f.Transort.ListenAddr(), p)
+		// p.Send([]byte{p2p.IncommingMessage})
+		full := append([]byte{p2p.IncommingMessage}, buf.Bytes()...)
 		// p.Send(full)
 
-		if err := p.Send(buf.Bytes()); err != nil {
+		if err := peer.Send(full); err != nil {
 			return err
 		}
 	}
 	return nil
 }
+
+// func (f *FileServer) broadcastDuplicateCheck(msg *Message) error {
+// 	buf := new(bytes.Buffer)
+// 	if err := gob.NewEncoder(buf).Encode(msg); err != nil {
+// 		return err
+// 	}
+
+// 	for _, p := range f.peers {
+// 		fmt.Printf("[%s] Broadcasting duplicate check to peer %s\n", f.Transort.ListenAddr(), p.RemoteAddr().String())
+// 		p.Send([]byte{p2p.IncommingMessage})
+// 		// full := append([]byte{p2p.IncommingMessage}, buf.Bytes()...)
+// 		// p.Send(full)
+
+// 		if err := p.Send(buf.Bytes()); err != nil {
+// 			return err
+// 		}
+// 	}
+// 	return nil
+// }
 
 func (f *FileServer) broadcastLimited(peers []string, msg *Message) error {
 	// fmt.Println("Limited broadcast")

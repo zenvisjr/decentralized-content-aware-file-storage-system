@@ -98,7 +98,7 @@ func(s *Store) DeleteSignature(key string) {
 
 // Checks whether the given key maps to an existing file on disk under the store’s directory.
 func (s *Store) Has(id string, key string) bool {
-
+	fmt.Println("id", id)
 	ext := getExtension(key)
 	key = removeExtension(key)
 	// fmt.Println("Key in has", key)

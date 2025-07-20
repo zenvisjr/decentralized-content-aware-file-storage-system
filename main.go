@@ -62,13 +62,13 @@ func main() {
 	// }
 
 	// fmt.Println("---------------------------------------------------------------------------------------")
-	// session := "faad70ba1fd046e0e0d0ead4be3754e1ad9756f3949527b794bcde9190604dcb"
-	// if err := s1.DeleteRemote(key, session); err != nil {
+	// session := "37e4bd71c0f7c2ad805edb791890d08b8296b4a48368db92707f46df61cae404"
+	// if err := s2.DeleteRemote(key, session); err != nil {
 	// 	fmt.Println("Error deleting data", err)
 	// }
 	// fmt.Println("---------------------------------------------------------------------------------------")
 
-	// if err := s2.DeleteRemote(key); err != nil {
+	// if err := s3.DeleteRemote(key, "127.0.0.1:3000"); err != nil {
 	// 	fmt.Println("Error deleting data", err)
 	// }
 
