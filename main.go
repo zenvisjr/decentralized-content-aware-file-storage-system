@@ -35,7 +35,7 @@ func main() {
 	s1.store.ClearRoot()
 	s4.store.ClearRoot()
 
-	runCommandLoop(s3)
+	// runCommandLoop(s3)
 
 	key := "bill.pdf"
 	f, err := os.Open(key)
@@ -48,15 +48,40 @@ func main() {
 	if err := s3.Store(key, f); err != nil {
 		fmt.Println("Error storing data", err)
 	}
+	fmt.Println("---------------------------------------------------------------------------------------")
 
 	// time.Sleep(500 * time.Millisecond)
 	// if err := s3.Delete(key); err != nil {
 	// 	fmt.Println("Error deleting data", err)
 	// }
 
-	// time.Sleep(500 * time.Millisecond)
-	// if err := s3.DeleteLocal(key); err != nil {
-	// 	fmt.Println("Error deleting data", err)
+	time.Sleep(500 * time.Millisecond)
+	if err := s3.DeleteLocal(key); err != nil {
+		fmt.Println("Error deleting data", err)
+	}
+
+	fmt.Println("---------------------------------------------------------------------------------------")
+
+	if err := s1.DeleteRemote(key); err != nil {
+		fmt.Println("Error deleting data", err)
+	}
+	fmt.Println("---------------------------------------------------------------------------------------")
+
+	if err := s2.DeleteRemote(key); err != nil {
+		fmt.Println("Error deleting data", err)
+	}
+
+	fmt.Println("---------------------------------------------------------------------------------------")
+
+	// f, err = os.Open(key)
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+
+	// // key := "aizen"
+	// // // // f := bytes.NewReader([]byte("hello watashino soul society"))
+	// if err := s3.Store(key, f); err != nil {
+	// 	fmt.Println("Error storing data", err)
 	// }
 
 	// // // time.Sleep(500 * time.Millisecond)
@@ -73,6 +98,7 @@ func main() {
 	// 		log.Fatal("Error reading data ", err)
 	// 	}
 	// 	fmt.Println(string(n))
-
 	// }
+	// fmt.Println(flLocation)
+	fmt.Println("---------------------------------------------------------------------------------------")
 }

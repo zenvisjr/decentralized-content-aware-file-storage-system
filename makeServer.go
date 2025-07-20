@@ -170,7 +170,8 @@ func runCommandLoop(fs *FileServer) {
 			}
 			f, err := os.Open(args[1])
 			if err != nil {
-				log.Fatal(err)
+				log.Println(err)
+				continue
 			}
 			defer f.Close()
 

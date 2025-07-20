@@ -109,7 +109,7 @@ func (s *Store) Has(id string, key string) bool {
 	if len(ext) != 0 {
 		fullPathWithRoot += ext
 	}
-	// fmt.Println("Full path in has", fullPathWithRoot)
+	fmt.Println("Full path in has", fullPathWithRoot)
 
 	_, err := os.Stat(fullPathWithRoot)
 	return !errors.Is(err, os.ErrNotExist)

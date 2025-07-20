@@ -63,6 +63,7 @@ func NewFileServer(ops FileServerOps) (*FileServer, error) {
 	// }
 	if len(ops.ID) == 0 {
 		ops.ID = generateID()
+		// ops.ID = "watashino"
 	}
 
 	// auditFileLocation := "audit/" + ops.RootStorage + "/" + ops.ID
@@ -117,7 +118,7 @@ func (f *FileServer) Store(key string, r io.Reader) error {
 		}
 		fmt.Printf("[%s] File %s already stored locally at location [%s]\n", f.Transort.ListenAddr(), key, fileLocation)
 		//**** (IMPORTANT) add this to close hte file we write otherwise it will remain open and when performing delete operation it will throw error
-		fd.Close()
+		defer fd.Close()
 		goto ENCRYPT_AND_STREAM
 	}
 	fmt.Printf("[%s] Storing file to disk\n", f.Transort.ListenAddr())
@@ -139,13 +140,13 @@ ENCRYPT_AND_STREAM:
 			ID:  f.ID,
 		},
 	}
-	if err := f.broadcastDuplicateCheck(&msg); err != nil {
+	if err := f.broadcast(&msg); err != nil {
 		return err
 	}
 
 	// Wait 1 sec for all peers to reply
 	timeout := time.After(3 * time.Second)
-	peersWithFile := make(map[string]bool)
+	peersWithNoFile := new([]string)
 
 	waiting := len(f.peers)
 	fmt.Println("Waiting for duplicate responses from", waiting, "peers")
@@ -157,9 +158,9 @@ END:
 			if !pair.hasFile {
 				// fmt.Printf("[%s] Received duplicate response from peer %s for file %s\n", f.Transort.ListenAddr(), addr, msg.Payload.(MessageDuplicateCheck).Key)
 				fmt.Printf("[%s ]  File is not present with peer [%s]\n", f.Transort.ListenAddr(), pair.addr)
+				*peersWithNoFile = append(*peersWithNoFile, pair.addr)
 			} else {
 				fmt.Printf("[%s] File is present with peer [%s]\n", f.Transort.ListenAddr(), pair.addr)
-				peersWithFile[pair.addr] = true
 			}
 			waiting--
 		case <-timeout:
@@ -167,14 +168,14 @@ END:
 			goto END
 		}
 	}
-
-	if len(peersWithFile) == len(f.peers) {
+	fmt.Println("peersWithNoFile after ack", len(*peersWithNoFile))
+	if len(*peersWithNoFile) == 0 {
 		fmt.Printf("[%s] File %s stored on all peers\n", f.Transort.ListenAddr(), key)
 		f.auditLogger.Log("STORE", key, "LOCAL", "STORED_ON_ALL_PEERS")
 		return nil
-	} else if len(peersWithFile) > 0 {
-		fmt.Printf("[%s] File %s already stored on %d peers\n", f.Transort.ListenAddr(), key, len(peersWithFile))
-		f.auditLogger.Log("STORE", key, "LOCAL", "ALREADY_STORED_ON_SOME_PEERS")
+	} else if len(*peersWithNoFile) > 0 {
+		fmt.Printf("[%s] File %s not stored on %d peers\n", f.Transort.ListenAddr(), key, len(*peersWithNoFile))
+		f.auditLogger.Log("STORE", key, "LOCAL", "NOT_STORED_ON_SOME_PEERS")
 	} else {
 		fmt.Printf("[%s] File %s not stored on any peer\n", f.Transort.ListenAddr(), key)
 		f.auditLogger.Log("STORE", key, "LOCAL", "NOT_STORED_ON_ANY_PEER")
@@ -253,16 +254,36 @@ END:
 	fmt.Printf("[%s] Broadcasting metadata to peers...\n", f.Transort.ListenAddr())
 	f.auditLogger.Log("STORE", key, "BROADCAST", "START")
 
-	if err := f.broadcast(&msg); err != nil {
-		f.auditLogger.Log("STORE", key, "BROADCAST", "FAILED")
-		return err
+	fmt.Println("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+	fmt.Println("peersWithNoFile", len(*peersWithNoFile))
+
+	if len(*peersWithNoFile) == 0 {
+		fmt.Println("Complete Broadcast")
+		if err := f.broadcast(&msg); err != nil {
+			f.auditLogger.Log("STORE", key, "BROADCAST", "FAILED")
+			return err
+		}
+
+	} else {
+		fmt.Println("Limited broadcast")
+		if err := f.broadcastLimited(*peersWithNoFile, &msg); err != nil {
+			f.auditLogger.Log("STORE", key, "BROADCAST", "FAILED")
+			return err
+		}
+
 	}
 
 	time.Sleep(50 * time.Millisecond)
 
 	peers := []io.Writer{}
-	for _, peer := range f.peers {
-		peers = append(peers, peer)
+	if len(*peersWithNoFile) > 0 {
+		for _, peer := range *peersWithNoFile {
+			peers = append(peers, f.peers[peer])
+		}
+	} else {
+		for _, peer := range f.peers {
+			peers = append(peers, peer)
+		}
 	}
 
 	mw := io.MultiWriter(peers...)
@@ -273,7 +294,15 @@ END:
 
 		return err
 	}
-	fmt.Printf("[%s] Streaming encrypted file to %d peers...\n", f.Transort.ListenAddr(), len(f.peers))
+	
+	var totalPeers int
+	if len(*peersWithNoFile) > 0 {
+		totalPeers = len(*peersWithNoFile)
+	} else {
+		totalPeers = len(f.peers)
+	}
+
+	fmt.Printf("[%s] Streaming encrypted file to %d peers...\n", f.Transort.ListenAddr(), len(f.peers)-len(*peersWithNoFile))
 	f.auditLogger.Log("STORE", key, "STREAM", "START")
 	mw.Write([]byte{p2p.IncommingStream})
 	// Create a fresh reader from the original file data for streaming
@@ -294,7 +323,13 @@ END:
 
 	successCount := 0
 	failures := make(map[string]string)
-	expectedAcks, totalPeers := len(f.peers), len(f.peers)
+
+	var expectedAcks int
+	if len(*peersWithNoFile) > 0 {
+		expectedAcks = len(*peersWithNoFile)
+	} else {
+		expectedAcks = len(f.peers)
+	}
 
 	timeout = time.After(2 * time.Second)
 	timeoutErr := ""
@@ -590,6 +625,30 @@ func (f *FileServer) DeleteLocal(key string) error {
 			return err
 		}
 		f.store.DeleteSignature(key)
+		f.auditLogger.Log("DELETE", key, "LOCAL", "SUCCESS")
+		fmt.Printf("[%s] deleted signature from local disk\n", f.Transort.ListenAddr())
+	} else {
+		fmt.Printf("[%s] File [%s] not found locally. Skipping local deletion.\n", f.Transort.ListenAddr(), key)
+		f.auditLogger.Log("DELETE", key, "LOCAL", "NOT_FOUND")
+	}
+
+	return nil
+}
+
+func (f *FileServer) DeleteRemote(key string) error {
+	ext := getExtension(key)
+	remotekey := hashKey(key)
+	if len(ext) != 0 {
+		remotekey += ext
+	}
+	fmt.Printf("[%s] file [%s] hash key [%s]\n", f.Transort.ListenAddr(), key, remotekey)
+	if f.store.Has(f.ID, remotekey) {
+		fmt.Printf("[%s] have file [%s], deleting from local disk\n", f.Transort.ListenAddr(), key)
+		err := f.store.Delete(f.ID, remotekey)
+		if err != nil {
+			return err
+		}
+		f.store.DeleteSignature(hashKey(key))
 		f.auditLogger.Log("DELETE", key, "LOCAL", "SUCCESS")
 		fmt.Printf("[%s] deleted signature from local disk\n", f.Transort.ListenAddr())
 	} else {
@@ -1029,7 +1088,7 @@ func (f *FileServer) broadcast(msg *Message) error {
 	}
 
 	for _, p := range f.peers {
-		fmt.Println("Broadcasting message to peer", p.RemoteAddr().String())
+		fmt.Printf("[%s] Broadcasting message to peer %s\n", f.Transort.ListenAddr(), p.RemoteAddr().String())
 		// p.Send([]byte{p2p.IncommingMessage})
 		full := append([]byte{p2p.IncommingMessage}, buf.Bytes()...)
 		// p.Send(full)
@@ -1054,6 +1113,29 @@ func (f *FileServer) broadcastDuplicateCheck(msg *Message) error {
 		// p.Send(full)
 
 		if err := p.Send(buf.Bytes()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (f *FileServer) broadcastLimited(peers []string, msg *Message) error {
+	// fmt.Println("Limited broadcast")
+	buf := new(bytes.Buffer)
+	if err := gob.NewEncoder(buf).Encode(msg); err != nil {
+		return err
+	}
+
+	for _, addr := range peers {
+		fmt.Printf("[%s] Broadcasting message to peer %s\n", f.Transort.ListenAddr(), addr)
+		// p.Send([]byte{p2p.IncommingMessage})
+		full := append([]byte{p2p.IncommingMessage}, buf.Bytes()...)
+		// p.Send(full)
+		peer, ok := f.peers[addr]
+		if !ok {
+			return fmt.Errorf("peer %s not found", addr)
+		}
+		if err := peer.Send(full); err != nil {
 			return err
 		}
 	}
