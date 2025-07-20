@@ -770,16 +770,16 @@ func (f *FileServer) DeleteLocal(key string) error {
 	return nil
 }
 
-func (f *FileServer) DeleteRemote(key string) error {
+func (f *FileServer) DeleteRemote(key, session string) error {
 	ext := getExtension(key)
 	remotekey := hashKey(key)
 	if len(ext) != 0 {
 		remotekey += ext
 	}
-	fmt.Printf("[%s] file [%s] hash key [%s]\n", f.Transort.ListenAddr(), key, remotekey)
-	if f.store.Has(f.ID, remotekey) {
+	// fmt.Printf("[%s] file [%s] hash key [%s]\n", f.Transort.ListenAddr(), key, remotekey)
+	if f.store.Has(session, remotekey) {
 		fmt.Printf("[%s] have file [%s], deleting from local disk\n", f.Transort.ListenAddr(), key)
-		err := f.store.Delete(f.ID, remotekey)
+		err := f.store.Delete(session, remotekey)
 		if err != nil {
 			return err
 		}

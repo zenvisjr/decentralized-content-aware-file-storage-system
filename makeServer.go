@@ -114,6 +114,15 @@ func registerAll() {
 	gob.Register(MessageDuplicateResponse{})
 }
 
+var helpText map[string]string = map[string]string{
+	"store":        "store <file-path>\n It stores the file at the given path on the server and replicate it on its peers.",
+	"get":          "get <filename>\n It gets the file from the server if its available on local storage or any of the peers.",
+	"delete":       "delete <filename>\n It deletes the file from the server and all its peers.",
+	"deletelocal":  "deletelocal <filename>\n It deletes the file from the local storage.",
+	"deleteremote": "deleteremote <filename> <target-session>\n It deletes the file from the remote storage of the target session.",
+	"quit":         "quit\n It quits the program.",
+}
+
 func runCommandLoop(fs *FileServer) {
 	scanner := bufio.NewScanner(os.Stdin)
 
@@ -197,6 +206,25 @@ func runCommandLoop(fs *FileServer) {
 			if err != nil {
 				fmt.Println("Error deleting local file:", err)
 			}
+		case "deleteremote":
+			if len(args) != 3 {
+				fmt.Println("Usage: deleteremote <filename> <session>")
+				continue
+			}
+			key := args[1]
+			session := args[2]
+			err := fs.DeleteRemote(key, session)
+			if err != nil {
+				fmt.Println("Error deleting remote file:", err)
+			}
+
+		case "help":
+			if len(args) != 2 {
+				fmt.Println("Usage: help <command>")
+				continue
+			}
+			fmt.Println(helpText[args[1]])
+			continue
 
 		case "quit":
 			fmt.Println("Exiting...")

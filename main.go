@@ -35,9 +35,10 @@ func main() {
 	s1.store.ClearRoot()
 	s4.store.ClearRoot()
 
-	// runCommandLoop(s3)
+	runCommandLoop(s3)
 
 	key := "bill.pdf"
+
 	f, err := os.Open(key)
 	if err != nil {
 		log.Fatal(err)
@@ -61,8 +62,8 @@ func main() {
 	// }
 
 	// fmt.Println("---------------------------------------------------------------------------------------")
-
-	// if err := s1.DeleteRemote(key); err != nil {
+	// session := "faad70ba1fd046e0e0d0ead4be3754e1ad9756f3949527b794bcde9190604dcb"
+	// if err := s1.DeleteRemote(key, session); err != nil {
 	// 	fmt.Println("Error deleting data", err)
 	// }
 	// fmt.Println("---------------------------------------------------------------------------------------")
