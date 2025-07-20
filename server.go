@@ -52,6 +52,19 @@ type FileServer struct {
 	// incomingStreamChan chan p2p.Peer
 }
 
+const sessionLogFile = "sessions.log"
+
+func logSession(id string, node string) error {
+	fd, err := os.OpenFile(sessionLogFile, os.O_CREATE | os.O_APPEND | os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer fd.Close()
+
+	sessionLogEntry := fmt.Sprintf("[%s] Session started for ID [%s] on node [%s]\n", time.Now().Format(time.RFC3339), id, node)
+	fd.WriteString(sessionLogEntry)
+	return nil
+}
 // NewFileServer creates a new FileServer instance.
 func NewFileServer(ops FileServerOps) (*FileServer, error) {
 	storeOps := &StoreOps{
@@ -65,6 +78,11 @@ func NewFileServer(ops FileServerOps) (*FileServer, error) {
 		ops.ID = generateID()
 		// ops.ID = "watashino"
 	}
+	node := ops.Transort.ListenAddr()
+	if err := logSession(ops.ID, node); err != nil {
+		log.Fatalf("Failed to log session: %v", err)
+	}
+
 
 	// auditFileLocation := "audit/" + ops.RootStorage + "/" + ops.ID
 	// logFileName := ops.ID + ".log"
@@ -241,6 +259,14 @@ END:
 	if err != nil {
 		return err
 	}
+
+	_, err = tempFile.Seek(0, io.SeekStart)
+	if err != nil {
+		f.auditLogger.Log("STORE", key, "ENCRYPT", "FAILED")
+
+		return err
+	}
+
 	msg = Message{
 		Payload: MessageStoreFile{
 			Key:  sigKey,
@@ -254,60 +280,24 @@ END:
 	fmt.Printf("[%s] Broadcasting metadata to peers...\n", f.Transort.ListenAddr())
 	f.auditLogger.Log("STORE", key, "BROADCAST", "START")
 
-	fmt.Println("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-	fmt.Println("peersWithNoFile", len(*peersWithNoFile))
+	// fmt.Println("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+	// fmt.Println("peersWithNoFile", len(*peersWithNoFile))
 
 	if len(*peersWithNoFile) == 0 {
-		fmt.Println("Complete Broadcast")
-		if err := f.broadcast(&msg); err != nil {
-			f.auditLogger.Log("STORE", key, "BROADCAST", "FAILED")
-			return err
-		}
-
+		f.storeComplete(key, &msg, tempFile)
 	} else {
-		fmt.Println("Limited broadcast")
-		if err := f.broadcastLimited(*peersWithNoFile, &msg); err != nil {
-			f.auditLogger.Log("STORE", key, "BROADCAST", "FAILED")
-			return err
-		}
-
+		f.storeLimited(key, peersWithNoFile, &msg, tempFile)
 	}
+	return nil
+}
 
-	time.Sleep(50 * time.Millisecond)
-
-	peers := []io.Writer{}
-	if len(*peersWithNoFile) > 0 {
-		for _, peer := range *peersWithNoFile {
-			peers = append(peers, f.peers[peer])
-		}
-	} else {
-		for _, peer := range f.peers {
-			peers = append(peers, peer)
-		}
-	}
+func (f *FileServer) streamFile(key string, peers []io.Writer, tempFile *os.File) error {
 
 	mw := io.MultiWriter(peers...)
 
-	_, err = tempFile.Seek(0, io.SeekStart)
-	if err != nil {
-		f.auditLogger.Log("STORE", key, "ENCRYPT", "FAILED")
-
-		return err
-	}
-	
-	var totalPeers int
-	if len(*peersWithNoFile) > 0 {
-		totalPeers = len(*peersWithNoFile)
-	} else {
-		totalPeers = len(f.peers)
-	}
-
-	fmt.Printf("[%s] Streaming encrypted file to %d peers...\n", f.Transort.ListenAddr(), len(f.peers)-len(*peersWithNoFile))
+	fmt.Printf("[%s] Streaming encrypted file to %d peers...\n", f.Transort.ListenAddr(), len(peers))
 	f.auditLogger.Log("STORE", key, "STREAM", "START")
 	mw.Write([]byte{p2p.IncommingStream})
-	// Create a fresh reader from the original file data for streaming
-	// Stream the encrypted data (IV + encrypted data) to peers
-	// encryptedReader := bytes.NewReader(tempFile)
 
 	nw, err := io.Copy(mw, tempFile)
 	if err != nil {
@@ -317,21 +307,16 @@ END:
 	fmt.Printf("[%s] Encrypted file streamed to peers: %d bytes\n", f.Transort.ListenAddr(), nw)
 
 	f.auditLogger.Log("STORE", key, "STREAM", "SUCCESS")
-	fmt.Printf("[%s] Recieved and written (%d) bytes to disk\n", f.Transort.ListenAddr(), nw)
+	return nil
+}
 
-	time.Sleep(500 * time.Millisecond)
-
+func (f *FileServer) waitingForStoreAck(key string, totalPeers int) error {
 	successCount := 0
 	failures := make(map[string]string)
 
-	var expectedAcks int
-	if len(*peersWithNoFile) > 0 {
-		expectedAcks = len(*peersWithNoFile)
-	} else {
-		expectedAcks = len(f.peers)
-	}
+	expectedAcks := totalPeers
 
-	timeout = time.After(2 * time.Second)
+	timeout := time.After(2 * time.Second)
 	timeoutErr := ""
 
 	// ackLoop:
@@ -366,6 +351,156 @@ END:
 	}
 
 	return nil
+}
+
+func (f *FileServer) storeLimited(key string, peersWithNoFile *[]string, msg *Message, tempFile *os.File) error {
+	fmt.Println("Limited broadcast")
+	totalPeers := len(*peersWithNoFile)
+	f.auditLogger.Log("STORE", key, "LIMITED_BROADCAST", "START")
+	if err := f.broadcastLimited(*peersWithNoFile, msg); err != nil {
+		f.auditLogger.Log("STORE", key, "LIMITED_BROADCAST", "FAILED")
+		return err
+	}
+	time.Sleep(50 * time.Millisecond)
+
+	peers := []io.Writer{}
+	for _, peer := range *peersWithNoFile {
+		peers = append(peers, f.peers[peer])
+	}
+
+	if err := f.streamFile(key, peers, tempFile); err != nil {
+		// f.auditLogger.Log("STORE", key, "COPY", "FAILED")
+		return err
+	}
+
+	if err := f.waitingForStoreAck(key, totalPeers); err != nil {
+		// f.auditLogger.Log("STORE", key, "COPY", "FAILED")
+		return err
+	}
+
+	// successCount := 0
+	// failures := make(map[string]string)
+
+	// expectedAcks := totalPeers
+
+	// timeout := time.After(2 * time.Second)
+	// timeoutErr := ""
+
+	// // ackLoop:
+	// for expectedAcks > 0 {
+	// 	select {
+	// 	case ack := <-f.storeAckChan:
+	// 		fmt.Printf("[%s] Received store ACK from peer %s\n", f.Transort.ListenAddr(), ack.From)
+	// 		// fmt.Printf("[%s] Received error %s\n", f.Transort.ListenAddr(), ack.Err)
+	// 		expectedAcks--
+	// 		if ack.Err == "" {
+	// 			successCount++
+	// 			// fmt.Println("successCount", successCount)
+	// 		} else {
+	// 			failures[ack.From] = ack.Err
+	// 		}
+	// 	case <-timeout:
+	// 		timeoutErr = fmt.Sprintf("[%s] Timeout waiting for store ACKs from all peers.\n", f.Transort.ListenAddr())
+	// 		f.auditLogger.Log("REPLICATE", key, "ALL", "ACK_TIMEOUT")
+	// 		return errors.New(timeoutErr)
+	// 		// break ackLoop
+	// 	}
+	// }
+	// if successCount == totalPeers {
+	// 	fmt.Printf("[%s] File %s successfully replicated to %d peers.\n", f.Transort.ListenAddr(), key, successCount)
+	// 	f.auditLogger.Log("REPLICATE", key, "NETWORK", "SUCCESS")
+	// } else {
+	// 	fmt.Printf("[%s] Replication failed on %d peers:\n", f.Transort.ListenAddr(), totalPeers-successCount)
+	// 	for peer, reason := range failures {
+	// 		fmt.Printf(" - %s: %s\n", peer, reason)
+	// 		f.auditLogger.Log("REPLICATE", key, peer, "FAIL: "+reason)
+	// 	}
+	// }
+
+	return nil
+
+}
+
+func (f *FileServer) storeComplete(key string, msg *Message, tempFile *os.File) error {
+	fmt.Println("Complete Broadcast")
+	f.auditLogger.Log("STORE", key, "COMPLETE_BROADCAST", "START")
+
+	totalPeers := len(f.peers)
+
+	if err := f.broadcast(msg); err != nil {
+		f.auditLogger.Log("STORE", key, "COMPLETE_BROADCAST", "FAILED")
+		return err
+	}
+	time.Sleep(50 * time.Millisecond)
+
+	peers := []io.Writer{}
+	for _, peer := range f.peers {
+		peers = append(peers, peer)
+	}
+
+	if err := f.streamFile(key, peers, tempFile); err != nil {
+		// f.auditLogger.Log("STORE", key, "STREAM", "FAILED")
+		return err
+	}
+
+	// mw := io.MultiWriter(peers...)
+
+	// fmt.Printf("[%s] Streaming encrypted file to %d peers...\n", f.Transort.ListenAddr(), totalPeers)
+	// f.auditLogger.Log("STORE", key, "STREAM", "START")
+	// mw.Write([]byte{p2p.IncommingStream})
+
+	// nw, err := io.Copy(mw, tempFile)
+	// if err != nil {
+	// 	f.auditLogger.Log("STORE", key, "STREAM", "FAILED")
+	// 	return err
+	// }
+	// fmt.Printf("[%s] Encrypted file streamed to peers: %d bytes\n", f.Transort.ListenAddr(), nw)
+
+	// f.auditLogger.Log("STORE", key, "STREAM", "SUCCESS")
+
+	// time.Sleep(500 * time.Millisecond)
+
+	successCount := 0
+	failures := make(map[string]string)
+
+	expectedAcks := totalPeers
+
+	timeout := time.After(2 * time.Second)
+	timeoutErr := ""
+
+	// ackLoop:
+	for expectedAcks > 0 {
+		select {
+		case ack := <-f.storeAckChan:
+			fmt.Printf("[%s] Received store ACK from peer %s\n", f.Transort.ListenAddr(), ack.From)
+			// fmt.Printf("[%s] Received error %s\n", f.Transort.ListenAddr(), ack.Err)
+			expectedAcks--
+			if ack.Err == "" {
+				successCount++
+				// fmt.Println("successCount", successCount)
+			} else {
+				failures[ack.From] = ack.Err
+			}
+		case <-timeout:
+			timeoutErr = fmt.Sprintf("[%s] Timeout waiting for store ACKs from all peers.\n", f.Transort.ListenAddr())
+			f.auditLogger.Log("REPLICATE", key, "ALL", "ACK_TIMEOUT")
+			return errors.New(timeoutErr)
+			// break ackLoop
+		}
+	}
+	if successCount == totalPeers {
+		fmt.Printf("[%s] File %s successfully replicated to %d peers.\n", f.Transort.ListenAddr(), key, successCount)
+		f.auditLogger.Log("REPLICATE", key, "NETWORK", "SUCCESS")
+	} else {
+		fmt.Printf("[%s] Replication failed on %d peers:\n", f.Transort.ListenAddr(), totalPeers-successCount)
+		for peer, reason := range failures {
+			fmt.Printf(" - %s: %s\n", peer, reason)
+			f.auditLogger.Log("REPLICATE", key, peer, "FAIL: "+reason)
+		}
+	}
+
+	return nil
+
 }
 
 // Get fetches the file from disk if present locally else fetches from the network from its peers

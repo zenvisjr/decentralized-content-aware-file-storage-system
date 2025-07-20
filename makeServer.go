@@ -19,7 +19,6 @@ import (
 type ServerConfig struct {
 	Port           string   `json:"port"`
 	BootstrapNodes []string `json:"peers"`
-	KeyPath        string   `json:"key_path"`
 }
 
 func loadConfig(path string) ([]ServerConfig, error) {
@@ -79,36 +78,6 @@ func makeServer(configFile *ServerConfig) *FileServer {
 
 	return newFileServer
 }
-
-// func makeServer(port string, bootstrapNodes ...string) *FileServer {
-// 	tcpops := p2p.TCPTransportOps{
-// 		ListenerPortAddr: port,
-// 		ShakeHands:       p2p.NOHandshakeFunc,
-// 		Decoder:          &p2p.DefaultDecoder{},
-// 		OnPeer:           nil,
-// 	}
-
-// 	tcpTransport, _ := p2p.NewTCPTransport(tcpops)
-
-// 	//for windows as we cant start folder name with : so we need to remove it
-
-// 	newAddr := strings.ReplaceAll(port, ":", "_")
-// 	fileServerOps := FileServerOps{
-// 		RootStorage:       newAddr + "_gyattt",
-// 		PathTransformFunc: CryptoPathTransformFunc,
-// 		Transort:          tcpTransport,
-// 		BootstrapNodes:    bootstrapNodes,
-// 		EncKey:            newEncryptionKey(),
-// 	}
-// 	// fmt.Println(fileServerOps)
-
-// 	newFileServer, _ := NewFileServer(fileServerOps)
-
-// 	//assigning the onpeer func made in server.go to the TCPtransport in tcp_transport.go
-// 	tcpTransport.OnPeer = newFileServer.OnPeer
-
-// 	return newFileServer
-// }
 
 func completeServerSetup() map[string]*FileServer {
 	configPath := flag.String("config", "startServerConfig.json", "path of config file to create servers")

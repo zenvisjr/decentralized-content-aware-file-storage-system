@@ -55,31 +55,31 @@ func main() {
 	// 	fmt.Println("Error deleting data", err)
 	// }
 
-	time.Sleep(500 * time.Millisecond)
-	if err := s3.DeleteLocal(key); err != nil {
-		fmt.Println("Error deleting data", err)
-	}
+	// time.Sleep(500 * time.Millisecond)
+	// if err := s3.DeleteLocal(key); err != nil {
+	// 	fmt.Println("Error deleting data", err)
+	// }
 
-	fmt.Println("---------------------------------------------------------------------------------------")
+	// fmt.Println("---------------------------------------------------------------------------------------")
 
-	if err := s1.DeleteRemote(key); err != nil {
-		fmt.Println("Error deleting data", err)
-	}
-	fmt.Println("---------------------------------------------------------------------------------------")
+	// if err := s1.DeleteRemote(key); err != nil {
+	// 	fmt.Println("Error deleting data", err)
+	// }
+	// fmt.Println("---------------------------------------------------------------------------------------")
 
-	if err := s2.DeleteRemote(key); err != nil {
-		fmt.Println("Error deleting data", err)
-	}
+	// if err := s2.DeleteRemote(key); err != nil {
+	// 	fmt.Println("Error deleting data", err)
+	// }
 
-	fmt.Println("---------------------------------------------------------------------------------------")
+	// fmt.Println("---------------------------------------------------------------------------------------")
 
 	// f, err = os.Open(key)
 	// if err != nil {
 	// 	log.Fatal(err)
 	// }
 
-	// // key := "aizen"
-	// // // // f := bytes.NewReader([]byte("hello watashino soul society"))
+	// // // key := "aizen"
+	// // // // // f := bytes.NewReader([]byte("hello watashino soul society"))
 	// if err := s3.Store(key, f); err != nil {
 	// 	fmt.Println("Error storing data", err)
 	// }
