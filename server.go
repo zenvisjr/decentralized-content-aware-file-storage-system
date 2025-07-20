@@ -26,6 +26,15 @@ type FileServerOps struct {
 	EncKey            []byte
 }
 
+// type Pair struct {
+// 	Key string
+// 	Value string
+// }
+
+type Pair struct {
+	hasFile bool
+	addr string
+}
 // FileServer represents a file server.
 type FileServer struct {
 	FileServerOps
@@ -38,7 +47,7 @@ type FileServer struct {
 	storeAckChan  chan MessageStoreAck
 	deleteAckChan chan MessageDeleteAck
 	storedFiles   map[string]bool
-	duplicationResponseChan chan string
+	duplicationResponseChan chan Pair
 	// incomingStreamChan chan p2p.Peer
 }
 
@@ -78,7 +87,7 @@ func NewFileServer(ops FileServerOps) (*FileServer, error) {
 		storeAckChan:  make(chan MessageStoreAck, 100),
 		deleteAckChan: make(chan MessageDeleteAck, 100),
 		storedFiles:   make(map[string]bool),
-		duplicationResponseChan: make(chan string, 100),
+		duplicationResponseChan: make(chan Pair, 100),
 	}, nil
 }
 
@@ -140,22 +149,28 @@ END:
 	for waiting > 0 {
 		// fmt.Printf("[%s] Waiting for duplicate responses from %d peers\n", f.Transort.ListenAddr(), waiting)
 		select {
-		case addr := <-f.duplicationResponseChan:
-			fmt.Printf("[%s] Received duplicate response from peer %s for file %s\n", f.Transort.ListenAddr(), addr, msg.Payload.(MessageDuplicateCheck).Key)
-			peersWithFile[addr] = true
+		case pair := <-f.duplicationResponseChan:
+			if !pair.hasFile {
+				// fmt.Printf("[%s] Received duplicate response from peer %s for file %s\n", f.Transort.ListenAddr(), addr, msg.Payload.(MessageDuplicateCheck).Key)
+				fmt.Printf("[%s ]  File is not present with peer [%s]\n", f.Transort.ListenAddr(), pair.addr)
+				} else {
+				fmt.Printf("[%s] File is present with peer [%s]\n", f.Transort.ListenAddr(), pair.addr)
+				peersWithFile[pair.addr] = true
+			}
 			waiting--
 		case <-timeout:
 			fmt.Printf("[%s] Timeout while waiting for duplicate responses\n", f.Transort.ListenAddr())
 			goto END
 		}
 	}
-	if len(peersWithFile) > 0 {
-		fmt.Printf("[%s] File %s already stored on %d peers\n", f.Transort.ListenAddr(), key, len(peersWithFile))
-		f.auditLogger.Log("STORE", key, "LOCAL", "ALREADY_STORED_ON_SOME_PEERS")
-	} else if len(peersWithFile) == len(f.peers) {
+
+	if len(peersWithFile) == len(f.peers) {
 		fmt.Printf("[%s] File %s stored on all peers\n", f.Transort.ListenAddr(), key)
 		f.auditLogger.Log("STORE", key, "LOCAL", "STORED_ON_ALL_PEERS")
 		return nil
+	} else if len(peersWithFile) > 0 {
+		fmt.Printf("[%s] File %s already stored on %d peers\n", f.Transort.ListenAddr(), key, len(peersWithFile))
+		f.auditLogger.Log("STORE", key, "LOCAL", "ALREADY_STORED_ON_SOME_PEERS")
 	} else {
 		fmt.Printf("[%s] File %s not stored on any peer\n", f.Transort.ListenAddr(), key)
 		f.auditLogger.Log("STORE", key, "LOCAL", "NOT_STORED_ON_ANY_PEER")
@@ -210,7 +225,7 @@ END:
 		return err
 	}
 
-	fmt.Printf("[%s] Signature generated: %x\n", f.Transort.ListenAddr(), signature)
+	// fmt.Printf("[%s] Signature generated: %x\n", f.Transort.ListenAddr(), signature)
 
 	//store the signature of encrypted file in the map
 	sigKey := hashKey(key) + getExtension(key)
@@ -697,11 +712,15 @@ func (f *FileServer) HandleMessage(from string, msg *Message) error {
 func (f *FileServer) handleMessageDuplicateResponse(from string, msg *MessageDuplicateResponse) error {
 	// fmt.Println("executing handleMessageDuplicateResponse")
 	fmt.Printf("[%s] Received duplicate response from peer %s for file %s\n", f.Transort.ListenAddr(), from, msg.Key)
-	if !msg.HasIt {
-        f.duplicationResponseChan <- msg.From
-		// fmt.Printf("DEBUG: Successfully sent to duplicationResponseChan: %s\n", msg.From)
+	fmt.Println("HasIt", msg.HasIt)
+	if msg.HasIt {
+        f.duplicationResponseChan <- Pair{hasFile: true, addr: from}
+		fmt.Printf("DEBUG_FOUND: Successfully sent to duplicationResponseChan: %s\n", from)
 
-    }
+    } else {
+		f.duplicationResponseChan <- Pair{hasFile: false, addr: from}
+		fmt.Printf("DEBUG_NOT_FOUND: Successfully sent to duplicationResponseChan: %s\n", from)
+	}
     return nil
 }
 
@@ -881,7 +900,7 @@ func (f *FileServer) handleMessageStoreFile(from string, msg *MessageStoreFile) 
 		return err
 	}
 	// fmt.Println("Peer public key", peerPublicKey)
-	fmt.Printf("[%s] Signature : %x\n", f.Transort.ListenAddr(), msg.Signature)
+	// fmt.Printf("[%s] Signature : %x\n", f.Transort.ListenAddr(), msg.Signature)
 
 	digest := hasher.Sum(nil)
 	if err = verifySignature(digest, msg.Signature, peerPublicKey); err != nil {
