@@ -138,12 +138,12 @@ func (s *Store) Delete(id string, key string) error {
 	key = removeExtension(key)
 	pathKey := s.PathTransformFunc(key)
 
-	defer func() {
-		log.Printf("deleted [%s] from disk", pathKey.FileName)
-	}()
+	// defer func() {
+	// 	log.Printf("deleted [%s] from disk", pathKey.FileName)
+	// }()
 
 	firstPathNameWithRoot := fmt.Sprintf("%s/%s/%s", s.Root, id, pathKey.FirstPathName())
-	// fmt.Println("Delete location", firstPathNameWithRoot)
+	fmt.Println("Delete location", firstPathNameWithRoot)
 
 	return os.RemoveAll(firstPathNameWithRoot)
 }

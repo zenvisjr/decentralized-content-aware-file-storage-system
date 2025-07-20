@@ -115,10 +115,13 @@ func (f *FileServer) Store(key string, r io.Reader) error {
 			return err
 		}
 		fmt.Printf("[%s] File %s already stored locally at location [%s]\n", f.Transort.ListenAddr(), key, fileLocation)
+		//**** (IMPORTANT) add this to close hte file we write otherwise it will remain open and when performing delete operation it will throw error
+		fd.Close()
 		goto ENCRYPT_AND_STREAM
 	}
 	fmt.Printf("[%s] Storing file to disk\n", f.Transort.ListenAddr())
 	size, err, fd = f.store.Write(f.ID, key, r)
+	defer fd.Close()
 	if err != nil {
 		f.auditLogger.Log("STORE", key, "LOCAL", "FAILED")
 		return err
@@ -292,12 +295,12 @@ END:
 
 	successCount := 0
 	failures := make(map[string]string)
-	expectedAcks := len(f.peers)
+	expectedAcks, totalPeers := len(f.peers), len(f.peers)
 
 	timeout = time.After(2 * time.Second)
 	timeoutErr := ""
 
-ackLoop:
+// ackLoop:
 	for expectedAcks > 0 {
 		select {
 		case ack := <-f.storeAckChan:
@@ -312,18 +315,16 @@ ackLoop:
 			}
 		case <-timeout:
 			timeoutErr = fmt.Sprintf("[%s] Timeout waiting for store ACKs from all peers.\n", f.Transort.ListenAddr())
-			break ackLoop
+			f.auditLogger.Log("REPLICATE", key, "ALL", "ACK_TIMEOUT")
+			return errors.New(timeoutErr)
+			// break ackLoop
 		}
 	}
-	if len(timeoutErr) > 0 {
-		fmt.Println(timeoutErr)
-		f.auditLogger.Log("REPLICATE", key, "ALL", "MIGHT_FAILED: "+timeoutErr)
-		return errors.New(timeoutErr)
-	} else if expectedAcks == 0 {
+	if successCount == totalPeers {
 		fmt.Printf("[%s] File %s successfully replicated to %d peers.\n", f.Transort.ListenAddr(), key, successCount)
 		f.auditLogger.Log("REPLICATE", key, "NETWORK", "SUCCESS")
 	} else {
-		fmt.Printf("[%s] Replication failed on %d peers:\n", f.Transort.ListenAddr(), len(failures))
+		fmt.Printf("[%s] Replication failed on %d peers:\n", f.Transort.ListenAddr(), totalPeers-successCount)
 		for peer, reason := range failures {
 			fmt.Printf(" - %s: %s\n", peer, reason)
 			f.auditLogger.Log("REPLICATE", key, peer, "FAIL: "+reason)
@@ -557,12 +558,12 @@ func (f *FileServer) Delete(key string) error {
 		return err
 	}
 
-	expectedAcks := len(f.peers)
+	expectedAcks, totalPeers := len(f.peers), len(f.peers)
 	successCount := 0
 	failures := make(map[string]string)
 	timeout := time.After(5 * time.Second)
-	timeoutErr := ""
-ackLoop:
+	// timeoutErr := ""
+// ackLoop:
 	for expectedAcks > 0 {
 		select {
 		case ack := <-f.deleteAckChan:
@@ -571,24 +572,21 @@ ackLoop:
 			expectedAcks--
 			if ack.Err == "" {
 				successCount++
-				// fmt.Println("successCount", successCount)
+				fmt.Println("successCount", successCount)
 			} else {
 				failures[ack.From] = ack.Err
 			}
 		case <-timeout:
-			timeoutErr = fmt.Sprintf("[%s] Timeout waiting for delete ACKs from all peers.\n", f.Transort.ListenAddr())
-			break ackLoop
+			f.auditLogger.Log("DELETE", key, "ALL", "ACK_TIMEOUT")
+			fmt.Printf("[%s] Timeout waiting for delete ACKs from all peers.\n", f.Transort.ListenAddr())
+			return errors.New("timeout waiting for delete ACKs from all peers")
 		}
 	}
-	if len(timeoutErr) > 0 {
-		fmt.Println(timeoutErr)
-		f.auditLogger.Log("DELETE", key, "ALL", "MIGHT_FAILED: "+timeoutErr)
-		return errors.New(timeoutErr)
-	} else if expectedAcks == 0 {
+	if successCount == totalPeers {
 		fmt.Printf("[%s] File %s successfully deleted from %d peers.\n", f.Transort.ListenAddr(), key, successCount)
 		f.auditLogger.Log("DELETE", key, "NETWORK", "SUCCESS")
 	} else {
-		fmt.Printf("[%s] Delete failed on %d peers:\n", f.Transort.ListenAddr(), len(failures))
+		fmt.Printf("[%s] Delete failed on %d peers:\n", f.Transort.ListenAddr(), totalPeers-successCount)
 		for peer, reason := range failures {
 			fmt.Printf(" - %s: %s\n", peer, reason)
 			f.auditLogger.Log("DELETE", key, peer, "FAIL: "+reason)
@@ -863,6 +861,7 @@ func (f *FileServer) handleMessageStoreFile(from string, msg *MessageStoreFile) 
 	var (
 		err error
 		n   int64
+		fd  *os.File
 		// reader io.Reader
 	)
 	err = nil //default error
@@ -878,7 +877,12 @@ func (f *FileServer) handleMessageStoreFile(from string, msg *MessageStoreFile) 
 	hasher := sha256.New()
 	lr := io.TeeReader(io.LimitReader(peer, msg.Size), hasher)
 
-	n, err, _ = f.store.Write(msg.ID, msg.Key, lr)
+	n, err, fd = f.store.Write(msg.ID, msg.Key, lr)
+	
+	//**** (IMPORTANT) add this to close hte file we write otherwise it will remain open and when performing delete operation it will throw error
+	if fd != nil {
+		defer fd.Close()
+	}
 
 	// panic("not implemented")
 	if err != nil {
