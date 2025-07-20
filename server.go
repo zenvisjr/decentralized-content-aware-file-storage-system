@@ -33,20 +33,21 @@ type FileServerOps struct {
 
 type Pair struct {
 	hasFile bool
-	addr string
+	addr    string
 }
+
 // FileServer represents a file server.
 type FileServer struct {
 	FileServerOps
-	store         *Store
-	quitch        chan struct{}
-	peerLock      sync.Mutex
-	peers         map[string]p2p.Peer
-	notFoundChan  chan struct{}
-	auditLogger   *AuditLogger
-	storeAckChan  chan MessageStoreAck
-	deleteAckChan chan MessageDeleteAck
-	storedFiles   map[string]bool
+	store                   *Store
+	quitch                  chan struct{}
+	peerLock                sync.Mutex
+	peers                   map[string]p2p.Peer
+	notFoundChan            chan struct{}
+	auditLogger             *AuditLogger
+	storeAckChan            chan MessageStoreAck
+	deleteAckChan           chan MessageDeleteAck
+	storedFiles             map[string]bool
 	duplicationResponseChan chan Pair
 	// incomingStreamChan chan p2p.Peer
 }
@@ -77,16 +78,16 @@ func NewFileServer(ops FileServerOps) (*FileServer, error) {
 	}
 
 	return &FileServer{
-		FileServerOps: ops,
-		store:         NewStore(*storeOps),
-		quitch:        make(chan struct{}),
-		peerLock:      sync.Mutex{},
-		peers:         make(map[string]p2p.Peer),
-		notFoundChan:  make(chan struct{}, 100),
-		auditLogger:   audit,
-		storeAckChan:  make(chan MessageStoreAck, 100),
-		deleteAckChan: make(chan MessageDeleteAck, 100),
-		storedFiles:   make(map[string]bool),
+		FileServerOps:           ops,
+		store:                   NewStore(*storeOps),
+		quitch:                  make(chan struct{}),
+		peerLock:                sync.Mutex{},
+		peers:                   make(map[string]p2p.Peer),
+		notFoundChan:            make(chan struct{}, 100),
+		auditLogger:             audit,
+		storeAckChan:            make(chan MessageStoreAck, 100),
+		deleteAckChan:           make(chan MessageDeleteAck, 100),
+		storedFiles:             make(map[string]bool),
 		duplicationResponseChan: make(chan Pair, 100),
 	}, nil
 }
@@ -156,7 +157,7 @@ END:
 			if !pair.hasFile {
 				// fmt.Printf("[%s] Received duplicate response from peer %s for file %s\n", f.Transort.ListenAddr(), addr, msg.Payload.(MessageDuplicateCheck).Key)
 				fmt.Printf("[%s ]  File is not present with peer [%s]\n", f.Transort.ListenAddr(), pair.addr)
-				} else {
+			} else {
 				fmt.Printf("[%s] File is present with peer [%s]\n", f.Transort.ListenAddr(), pair.addr)
 				peersWithFile[pair.addr] = true
 			}
@@ -178,8 +179,6 @@ END:
 		fmt.Printf("[%s] File %s not stored on any peer\n", f.Transort.ListenAddr(), key)
 		f.auditLogger.Log("STORE", key, "LOCAL", "NOT_STORED_ON_ANY_PEER")
 	}
-
-
 
 	tempFile, err := os.CreateTemp("", "enc_temp_*.bin")
 	if err != nil {
@@ -300,7 +299,7 @@ END:
 	timeout = time.After(2 * time.Second)
 	timeoutErr := ""
 
-// ackLoop:
+	// ackLoop:
 	for expectedAcks > 0 {
 		select {
 		case ack := <-f.storeAckChan:
@@ -525,24 +524,10 @@ func (f *FileServer) Delete(key string) error {
 	fmt.Printf("[%s] Starting Delete operation for key: %s\n", f.Transort.ListenAddr(), key)
 	f.auditLogger.Log("DELETE", key, "START", "Initiating delete operation")
 
-	if f.store.Has(f.ID, key) {
-		fmt.Printf("[%s] have file [%s], deleting from local disk\n", f.Transort.ListenAddr(), key)
+	//first delete the file locally if its present
+	f.DeleteLocal(key)
 
-		if err := f.store.Delete(f.ID, key); err != nil {
-			f.auditLogger.Log("DELETE", key, "LOCAL", "FAIL_DELETE")
-			return err
-		}
-		f.auditLogger.Log("DELETE", key, "LOCAL", "SUCCESS")
-
-		f.store.DeleteSignature(key)
-		f.auditLogger.Log("DELETE_SIGNATURE", key, "LOCAL", "SUCCESS")
-		fmt.Printf("[%s] Signature for file [%s] deleted from signature map\n", f.Transort.ListenAddr(), key)
-
-	} else {
-		fmt.Printf("[%s] File [%s] not found locally. Skipping local deletion.\n", f.Transort.ListenAddr(), key)
-		f.auditLogger.Log("DELETE", key, "LOCAL", "NOT_FOUND")
-	}
-
+	//now delete the file from all the peers in the network
 	fmt.Printf("[%s] Initiating delete broadcast for file [%s] to peers...\n", f.Transort.ListenAddr(), key)
 	f.auditLogger.Log("DELETE", key, "NETWORK", "START_BROADCAST")
 	msg := Message{
@@ -563,7 +548,7 @@ func (f *FileServer) Delete(key string) error {
 	failures := make(map[string]string)
 	timeout := time.After(5 * time.Second)
 	// timeoutErr := ""
-// ackLoop:
+	// ackLoop:
 	for expectedAcks > 0 {
 		select {
 		case ack := <-f.deleteAckChan:
@@ -607,7 +592,11 @@ func (f *FileServer) DeleteLocal(key string) error {
 		f.store.DeleteSignature(key)
 		f.auditLogger.Log("DELETE", key, "LOCAL", "SUCCESS")
 		fmt.Printf("[%s] deleted signature from local disk\n", f.Transort.ListenAddr())
+	} else {
+		fmt.Printf("[%s] File [%s] not found locally. Skipping local deletion.\n", f.Transort.ListenAddr(), key)
+		f.auditLogger.Log("DELETE", key, "LOCAL", "NOT_FOUND")
 	}
+
 	return nil
 }
 
@@ -712,16 +701,15 @@ func (f *FileServer) handleMessageDuplicateResponse(from string, msg *MessageDup
 	fmt.Printf("[%s] Received duplicate response from peer %s for file %s\n", f.Transort.ListenAddr(), from, msg.Key)
 	fmt.Println("HasIt", msg.HasIt)
 	if msg.HasIt {
-        f.duplicationResponseChan <- Pair{hasFile: true, addr: from}
+		f.duplicationResponseChan <- Pair{hasFile: true, addr: from}
 		fmt.Printf("DEBUG_FOUND: Successfully sent to duplicationResponseChan: %s\n", from)
 
-    } else {
+	} else {
 		f.duplicationResponseChan <- Pair{hasFile: false, addr: from}
 		fmt.Printf("DEBUG_NOT_FOUND: Successfully sent to duplicationResponseChan: %s\n", from)
 	}
-    return nil
+	return nil
 }
-
 
 func (f *FileServer) handleMessageDuplicateCheck(from string, msg *MessageDuplicateCheck) error {
 	// fmt.Println("executing handleMessageDuplicateCheck")
@@ -878,7 +866,7 @@ func (f *FileServer) handleMessageStoreFile(from string, msg *MessageStoreFile) 
 	lr := io.TeeReader(io.LimitReader(peer, msg.Size), hasher)
 
 	n, err, fd = f.store.Write(msg.ID, msg.Key, lr)
-	
+
 	//**** (IMPORTANT) add this to close hte file we write otherwise it will remain open and when performing delete operation it will throw error
 	if fd != nil {
 		defer fd.Close()
