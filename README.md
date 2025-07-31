@@ -232,10 +232,6 @@ The **Decentralized Secure Content-Aware File Storage System** is a peer-to-peer
 
 ---
 
-Thanks! Based on your updated `Makefile` and `startServerConfig.json` structure, here's the revised and complete **🚀 Getting Started** section with everything integrated:
-
----
-
 ## 🚀 Getting Started
 
 ### 🌟 Prerequisites
